@@ -17,7 +17,7 @@ These lists can be used as a reference for developers, auditors, and security to
  7. [MACI 1.0: Under-constrained Circuit](#maci-1)
  8. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
  9. [PlonK: Frozen Heart](#plonk-1)
- 10. [Zcash: Frozen Heart](#zcash-1)
+ 10. [Zcash: Trusted Setup Leak](#zcash-1)
  
 #### [Common Vulnerabilities](#common-vulnerabilities)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -26,7 +26,7 @@ These lists can be used as a reference for developers, auditors, and security to
  4. [Mismatching Bit Lengths](#mismatching-bit-lengths)
  5. [Unused Public Inputs Optimized Out](#unused-pub-inputs)
  6. [Frozen Heart: Forging of Zero Knowledge Proofs](#frozen-heart)
- 
+ 7. [Trusted Setup Leak](#trusted-setup-leak)
  
 
 # Bugs in the Wild
@@ -138,6 +138,8 @@ The BigMod circuit, used for the modulo operation on big integers, was missing a
 
 The BigInt circuits are used to perform arithmetic on integers larger than the SNARK scalar field order. BigMod is the circuit responsible for performing the modulo operation on these large integers. BigMod takes inputs *a* and *b*, and outputs the quotient and remainder of *a % b*. The circuit uses a helper function, *long_division*, to calculate the quotient and remainder. However, functions can’t add constraints, so the BigMod circuit must add constraints to ensure that the quotient and remainder are correct.
 
+Additionally, the BigInt circuits store big integers in two formats: proper representation and signed overflow representation. Proper representation does not allow for integers to be negative whereas the signed overflow representation does. Due to the representation style, the negative signed overflow numbers may have more bits than the proper representation style.
+
 **The Vulnerability**
 
 Two important constraints are ensuring that both the quotient and the remainder are the proper number of bits. There was a bit length check on the quotient, however there was no check for the remainder:
@@ -194,6 +196,7 @@ for (var i = 0; i < k; i++) {
 **References**
 
 1. [Commit of the Fix](https://github.com/0xPARC/circom-ecdsa/pull/10)
+2. [More info on bigint representation](https://hackmd.io/hIfysDw4TtC_6RR4gzdjBw?view)
 
 ## <a name="semaphore-1">3. Semaphore: Missing Smart Contract Range Check</a>
 
@@ -476,27 +479,27 @@ The fix for these vulnerabilities differs for each implementation affected, but 
 
 1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/18/the-frozen-heart-vulnerability-in-plonk/)
 
-## <a name="zcash-1">10. Zcash: Frozen Heart</a>
+## <a name="zcash-1">10. Zcash: Trusted Setup Leak</a>
 
 **Summary**
 
-Related Vulnerabilities: 6. Frozen Heart
+Related Vulnerabilities: 7. Trusted Setup Leak
 
 Identified By: Zcash Team
 
-The Zcash zero-knowledge proofs are based on a modified version of the Pinocchio protocol. This protocol relies on a trusted set-up of parameters based on the Zcash circuit. However, some of the parameters generated as part of this trusted set-up allow a malicious prover to forge a proof that creates new Zcash tokens.
+The Zcash zero-knowledge proofs are based on a modified version of the Pinocchio protocol. This protocol relies on a trusted setup of parameters based on the Zcash circuit. However, some of the parameters generated as part of this trusted setup allow a malicious prover to forge a proof that creates new Zcash tokens.
 
 **Background**
 
-For zero-knowledge protocols such as Pinocchio and Groth16, a trusted set-up is required. The trusted set-up is a way to generate the proper parameters needed so that the prover can generate a proof, and the verifier can properly verify it. The trusted set-up process usually involves parameters that must be kept secret, otherwise malicious provers can forge proofs. These parameters are known as “toxic waste” and kept private through the use of multi-party computation. Therefore, it’s very important the trusted set-up process generates the correct parameters and keeps the toxic waste hidden. 
+For zero-knowledge protocols such as Pinocchio and Groth16, a trusted setup is required. The trusted setup is a way to generate the proper parameters needed so that the prover can generate a proof, and the verifier can properly verify it. The trusted setup process usually involves parameters that must be kept secret, otherwise malicious provers can forge proofs. These parameters are known as “toxic waste” and kept private through the use of multi-party computation. Therefore, it’s very important the trusted set-up process generates the correct parameters and keeps the toxic waste hidden. 
 
 **The Vulnerability**
 
-The trusted set-up for Zcash’s implementation of Pinocchio generated extra parameters that leaked information about the toxic waste. These extra parameters allowed malicious provers to forge proofs that would create Zcash tokens out of nothing. The use of the extra parameters essentially allowed users to counterfeit tokens. However, this vulnerability was never exploited.
+The trusted setup for Zcash’s implementation of Pinocchio generated extra parameters that leaked information about the toxic waste. These extra parameters allowed malicious provers to forge proofs that would create Zcash tokens out of nothing. The use of the extra parameters essentially allowed users to counterfeit tokens. However, this vulnerability was never exploited.
 
 **The Fix**
 
-Since the toxic parameters were visible on the trusted set-up ceremony document, it was impossible to ensure no one had seen them. The issue was fixed by the Zcash Sapling upgrade which involved a new trusted set-up. The new trusted set-up was ensured to not release any toxic parameters. Please see the Zcash explanation in the references section for more details on the timeline of events.
+Since the toxic parameters were visible on the trusted setup ceremony document, it was impossible to ensure no one had seen them. The issue was fixed by the Zcash Sapling upgrade which involved a new trusted setup. The new trusted setup was ensured to not release any toxic parameters. Please see the Zcash explanation in the references section for more details on the timeline of events.
 
 **References**
 
@@ -526,7 +529,7 @@ component main{public [val]} = Factors();
 
 This circuit is meant to prove that a prover knows two non identity factors (factors that don’t equal 1) of the public input *val*. The circuit is under-constrained because there is no constraint forcing the prover to use values other than 1 for *factorOne* or *factorTwo*. There is another missing constraint to ensure that *factorOne * factorTwo* is less than the scalar field order (See 3. Arithmetic Over/Under Flows for more details). 
 
-Under-constrained circuits attacks can very widely depending on the constraints that are missing. In some cases it can lead to significant consequences like allowing a user to repeatedly drain funds (see Bugs in the Wild 5. and 6.). In order to prevent these bugs, it is important to test the circuit with edge cases and manually review the logic in depth. Formal verification tools are almost production ready and will be able to catch a lot of common under-constrained bugs. Additional tooling to catch these vulnerabilities is in the works as well.
+Under-constrained circuits attacks can very widely depending on the constraints that are missing. In some cases it can lead to significant consequences like allowing a user to repeatedly drain funds (see Bugs in the Wild 5. and 6.). In order to prevent these bugs, it is important to test the circuit with edge cases and manually review the logic in depth. Formal verification tools are almost production ready and will be able to catch a lot of common under-constrained bugs, such as [ECNE by 0xPARC](https://0xparc.org/blog/ecne) and [Veridise's circom-coq](https://reviewgithub.com/rep/Veridise/circom-coq). Additional tooling to catch these vulnerabilities is in the works as well.
 
 ## <a name="nondeterministic-circuits">2. Nondeterministic Circuits</a>
 
@@ -609,7 +612,7 @@ template LessThan(n) {
 
 The *LessThan* circuit outputs 1 if *in[0] < in[1]*, and 0 otherwise. An attacker could use *in[0]* as a small number 
 and *in[1]* as a number with more than *n* bits. This would cause the *Num2Bits* input to underflow, and so the output 
-could be engineered to 1, even though *in[1] > in[0]*.
+could be engineered to 0, even though *in[0] < in[1]*.
 
 **Preventative Techniques**
 
@@ -663,7 +666,21 @@ Semaphore is a zero-knowledge application that allows users to prove membership 
 
 **Preventative Techniques**
 
-To prevent this over optimization, one can add a non-linear constraint that involves the public input. Semaphore and TornadoCash do this. Semaphore’s public “signalHash” input is intentionally added into a non-linear constraint (”signalHashSquared”) to prevent it from being optimized out.
+To prevent this over optimization, one can add a non-linear constraint that involves the public input. TornadoCash and Semaphore do this. TornadoCash used multiple non-linear constraints to prevent its public variables from being optimized out. Semaphore’s public “signalHash” input is intentionally added into a non-linear constraint (”signalHashSquared”) to prevent it from being optimized out.
+[tornado-core/circuits/withdraw.circom](https://github.com/all-forks/tornado-core/blob/master/circuits/withdraw.circom)
+```jsx
+// Add hidden signals to make sure that tampering with recipient or fee will invalidate the snark proof
+// Most likely it is not required, but it's better to stay on the safe side and it only takes 2 constraints
+// Squares are used to prevent optimizer from removing those constraints
+signal recipientSquare;
+signal feeSquare;
+signal relayerSquare;
+signal refundSquare;
+recipientSquare <== recipient * recipient;
+feeSquare <== fee * fee;
+relayerSquare <== relayer * relayer;
+refundSquare <== refund * refund;
+```
 
 [Semaphore/semaphore.circom](https://github.com/semaphore-protocol/semaphore/blob/main/circuits/semaphore.circom#L83-L85)
 
@@ -717,22 +734,32 @@ component main {public [signalHash, externalNullifier]} = Semaphore(20);
 
 ## <a name="frozen-heart">6. Frozen Heart: Forging of Zero Knowledge Proofs</a>
 
-If a zero-knowledge proof protocol is insecure, a malicious prover can forge a zk proof that will succeed verification. Depending on the details of the protocol, the forged proof can potentially be used to “prove” anything the prover wants. These types of vulnerabilities have been named “Frozen Heart” vulnerabilities by the TrailOfBits team to help raise awareness of these types of issues. Forgeable proofs are a type of soundness vulnerability since it allows provers to prove invalid information.
+If a zero-knowledge proof protocol is insecure, a malicious prover can forge a zk proof that will succeed verification. Depending on the details of the protocol, the forged proof can potentially be used to “prove” anything the prover wants. Additionally, many zk protocols use what is known as a Fiat-Shamir transformation. Insecure implementations of the Fiat-Shamir transformation can allow attackers to successfully forge proofs.
 
-There are a variety of vulnerabilities that can make a zk proof protocol unsound and thus allow forgeable proofs. The two vulnerabilities observed in production systems are:
+These types of vulnerabilities have been named “Frozen Heart” vulnerabilities by the TrailOfBits team. From their article (linked in references below):
+>We’ve dubbed this class of vulnerabilities Frozen Heart. The word frozen is an acronym for FoRging Of ZEro kNowledge proofs, and the Fiat-Shamir transformation is at the heart of most proof systems: it’s vital for their practical use, and it’s generally located centrally in protocols. We hope that a catchy moniker will help raise awareness of these issues in the cryptography and wider technology communities. - Jim Miller, TrailOfBits
 
-1. Leaked information from the trusted set up
-2. Incorrect Implementation of the Fiat-Shamir protocol
+Many zk protocols are first developed as interactive protocols, where the prover and verifier need to send messages in multiple rounds of communication. The verifier must send random numbers to the prover, that the prover is unable to predict. These are known as "challenges". The prover must then compute their components of the proof based on these challenges. This requirement for multiple rounds of communication would greatly limit these protocol's practicality. The most common way around this is to use the Fiat-Shamir transformation that supports what is known as the "random oracle model". Essentially, the prover can automatically get the challenges by hashing certain inputs of the proof instead of waiting on the verifier for the challenges. The hashes of the proof inputs acts as a random oracle. This allows the communication to happen within 1 round - the prover generates the proof and sends it to the verifier. The verifier then outputs accept or reject.
 
-The exact details of these bugs are described in more detail under the “Bugs in the Wild” section.    Both of these vulnerabilities allow malicious provers to control the input variables so that they can prove invalid information.
-
-As explained in the TrailOfBits’ explanation (linked in the references below), these bugs are widespread due to the general lack of guidance around implementing these complex protocols. Often times the protocols are implemented directly from the academic paper that first introduced the protocol. However, these papers do not include all of the necessary details to be weary of when writing it in code. TrailOfBits’ suggested solution is to produce better implementation guidance for developers, which is why they created [ZKDocs](https://www.zkdocs.com/).
+As explained in the TrailOfBits’ explanation (linked in the references below), these bugs are widespread due to the general lack of guidance around implementing the Fiat-Shamir transfromation for different protocols. Often times the protocols are implemented directly from the academic paper that first introduced the protocol. However, these papers do not include all of the necessary details to be weary of when writing it in code. TrailOfBits’ suggested solution is to produce better implementation guidance for developers, which is why they created [ZKDocs](https://www.zkdocs.com/).
 
 **References**
 
 1. [TrailOfBits explanation on the Frozen Heart bugs they discovered](https://blog.trailofbits.com/2022/04/13/part-1-coordinated-disclosure-of-vulnerabilities-affecting-girault-bulletproofs-and-plonk/)
-2. [ZCash Soundness Bug](https://electriccoin.co/blog/zcash-counterfeiting-vulnerability-successfully-remediated/)
 
+## <a name="trusted-setup-leak">7. Trusted Setup Leak</a>
+Many popular zk protocols require what is known as a trusted setup. The trusted setup is used to generate the parameters necessary for a prover to create sound zk proofs. However, the setup also involves parameters that need to be hidden to everyone. These are known as "toxic waste". If the toxic waste is revealed to a party, then they would be able to forge zk proofs for that system. The toxic waste is usually kept private in practice through the use of multi-party computation. 
+
+Older zk protocols such as Pinocchio and Groth16 require a new trusted setup for each unique circuit. This creates problems whenever a project needs to update their circuits because then they would need to redo the trusted setup. Newer protocols such as MARLIN and PLONK still require a trusted setup, but only once. These protocols' setup is known as "universal" since it can be used for multiple programs, making upgrades much easier. Other protocols such as Bulletproofs and STARKs do not require trusted setups at all. 
+
+See the references below for more details on toxic waste and how trusted setups work.
+
+**References**
+
+1. [Zcash Parameter Generation](https://z.cash/technology/paramgen/)
+2. [How do trusted setups work? - Vitalik](https://vitalik.ca/general/2022/03/14/trustedsetup.html#:~:text=Many%20cryptographic%20protocols%2C%20especially%20in,some%20cryptographic%20protocol%20is%20run.)
+3. [Setup Ceremonies](https://zkproof.org/2021/06/30/setup-ceremonies/)
+4. [Zcash Soundness Bug](https://electriccoin.co/blog/zcash-counterfeiting-vulnerability-successfully-remediated/)
 
 
 This repo was inspired by a few other github repos that also document common vulnerabilities -
