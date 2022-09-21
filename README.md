@@ -6,8 +6,13 @@ The *Bugs in the Wild section* is a list of actual bugs found in zk related code
 The *Common Vulnerabilities* section outlines the common categories of zk related bugs that have been found. 
 These lists can be used as a reference for developers, auditors, and security tool makers. 
 
+#### Contributing
+If you would like to add a "bug in the wild" or a "common vulnerability", there are two ways to do so:
+1. Create a PR, filling in all of the necessary details yourself
+2. Create an issue with a link or description of the bug or common vulnerability. The repo maintainers will then fill out the relevant details in a PR.
+
 # Table of Contents
-#### [Bugs in the Wild](#bugs-in-the-wild)
+#### [Bugs in the Wild](#bugs-in-the-wild-header)
  1. [Dark Forest v0.3: Missing Bit Length Check](#dark-forest-1)
  2. [BigInt: Missing Bit Length Check](#bigint-1)
  3. [Semaphore: Missing Smart Contract Range Check](#semaphore-1)
@@ -19,7 +24,7 @@ These lists can be used as a reference for developers, auditors, and security to
  9. [PlonK: Frozen Heart](#plonk-1)
  10. [Zcash: Trusted Setup Leak](#zcash-1)
  
-#### [Common Vulnerabilities](#common-vulnerabilities)
+#### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
  2. [Nondeterministic Circuits](#nondeterministic-circuits)
  3. [Arithmetic Over/Under Flows](#arithmetic-over-under-flows)
@@ -29,7 +34,7 @@ These lists can be used as a reference for developers, auditors, and security to
  7. [Trusted Setup Leak](#trusted-setup-leak)
  
 
-# Bugs in the Wild
+# <a name="bugs-in-the-wild-header">Bugs in the Wild</a>
 
 ## <a name="dark-forest-1">1. Dark Forest v0.3: Missing Bit Length Check</a>
 
@@ -507,7 +512,7 @@ Since the toxic parameters were visible on the trusted setup ceremony document, 
 2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
 3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
 
-# Common Vulnerabilities
+# <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
 ## <a name="under-constrained-circuits">1. Under-constrained Circuits</a>
 
