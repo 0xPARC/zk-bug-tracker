@@ -32,6 +32,8 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  5. [Unused Public Inputs Optimized Out](#unused-pub-inputs)
  6. [Frozen Heart: Forging of Zero Knowledge Proofs](#frozen-heart)
  7. [Trusted Setup Leak](#trusted-setup-leak)
+
+#### [Zk Security Resources](#zk-security-resources)
  
 
 # <a name="bugs-in-the-wild-header">Bugs in the Wild</a>
@@ -771,3 +773,8 @@ This repo was inspired by a few other github repos that also document common vul
 - [(Not So) Smart Contracts](https://github.com/crytic/not-so-smart-contracts)
 - [Solidity Security Blog](https://github.com/sigp/solidity-security-blog)
 - [List of Security Vulnerabilities](https://github.com/runtimeverification/verified-smart-contracts/wiki/List-of-Security-Vulnerabilities)
+
+# <a name="zk-security-resources">Zk Security Resources</a>
+1. ["Security of ZKP projects: same but different"](https://www.aumasson.jp/data/talks/zksec_zk7.pdf) by JP Aumasson @ [Taurus](https://www.taurushq.com/). Great slides outlining the different types of zk security vulnerabilities along with examples.
+2. [Circomspect](https://github.com/trailofbits/circomspect) by [TrailOfBits](https://www.trailofbits.com/). A static analyzer for circom code to help detect vulnerabilities. The TrailOfBits [introduction post](https://blog.trailofbits.com/2022/09/15/it-pays-to-be-circomspect/) for this tool is a great read.
+
