@@ -23,6 +23,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  8. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
  9. [PlonK: Frozen Heart](#plonk-1)
  10. [Zcash: Trusted Setup Leak](#zcash-1)
+ 11. [MiMC Hash: Missing Constraint](#mimc-1)
  
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -137,7 +138,7 @@ template RangeProof(bits) {
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 3. Arithmetic Over/Under Flows, 4. Mismatching Bit Lengths
 
-Identified By: [Andrew He](https://github.com/ecnerwala)
+Identified By: [Andrew He](https://github.com/ecnerwala) and [Veridise](https://veridise.com/) independently
 
 The BigMod circuit, used for the modulo operation on big integers, was missing a bit length check on the output remainder. This constraint needs to be added to prevent 
 
@@ -513,6 +514,45 @@ Since the toxic parameters were visible on the trusted setup ceremony document, 
 1. [Zcash Explanation](https://electriccoin.co/blog/zcash-counterfeiting-vulnerability-successfully-remediated/)
 2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
 3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
+
+## <a name="mimc-1">11. MiMC Hash: Missing Constraint</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+
+Identified By: [Kobi Gurkan](https://github.com/kobigurk)
+
+The MiMC hash circuit from the circomlib package had a missing constraint during its computation logic. The circuit was under-constrained and nondeterministic because it didn't properly constrain MiMC inputs to the correct hash output.
+
+**Background**
+
+In circom constraints are created by the following three operators: `<==`, `===`, and `==>`. If other operators are used such as `<--`, `=`, or `-->`, then a constraint will not be added to the R1CS file. These other operators assign numbers or expressions to variables, but do not constrain them. Proper constraints are what is needed for the circuit to be sound.
+
+**The Vulnerability**
+
+During a computation step for this circuit, the `=` operator was used instead of the `<==` operator that was needed to create a constraint. Here is the code before the fix:
+
+```jsx
+outs[0] = S[nInputs - 1].xL_out;
+```
+
+So this line of code did not constrain outs[0] to S[nInputs - 1].xL_out. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs. 
+
+Since this hash function was used in the TornadoCash circuits, this would allow the attacker to fake a merkle root and withdraw someone else's ETH from the contract.
+
+**The Fix**
+
+The fix was simply to change `=` to a constraint operator `<==`.
+```jsx
+outs[0] <== S[nInputs - 1].xL_out;
+```
+
+**References**
+
+1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
+2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
+
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
