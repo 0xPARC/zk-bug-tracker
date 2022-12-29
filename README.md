@@ -24,6 +24,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  9. [PlonK: Frozen Heart](#plonk-1)
  10. [Zcash: Trusted Setup Leak](#zcash-1)
  11. [MiMC Hash: Missing Constraint](#mimc-1)
+ 12. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-1)
  
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -553,6 +554,68 @@ outs[0] <== S[nInputs - 1].xL_out;
 1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
 2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
 
+## <a name="zkevm-1">12. PSE & Scroll zkEVM: Missing Constraint</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
+
+The PSE & Scroll zkEVM modulo circuit was missing a constraint, which would allow a malicious prover to create a valid proof of a false modulo operation. Since the modulo operation is a basic building block for the zkEVM, the prover could convince the verifier of a wrong state update.
+
+**Background**
+
+The PSE & Scroll zkEVM circuits are programmed using their own fork of [Zcash's Halo2](https://github.com/zcash/halo2). Small components of the large zkEVM circuit can be broken down into what are called gadgets. In this case, the modulo gadget was missing a constraint.
+
+The Modulo gadget is intended to constrain:
+
+```jsx
+a mod n = r, if n!=0
+r = 0,       if n==0
+```
+
+The prover must supply `a, n, r, and k`, where they are all less than `2^256`. The Modulo gadget uses the MulAddWords gadget which constrains:
+
+```jsx
+a * b + c == d (modulo 2**256)
+```
+
+And the prover must supply `a, b, c, and d`. So the Modulo gadget inputs `k, n, r, a` for `a, b, c, d`. This creates the following constraint:
+
+```jsx
+k * n + r == a (modulo 2**256)
+```
+
+This constraint is intended to prove that `r = a mod n`.
+
+**The Vulnerability**
+
+The vulnerability arises from the fact that the MulAddWords gadget is done modulo `2^256` and that `k * n + r` can also be greater than `2^256`. This is because even though `k, n, r` are all less than `2^256`, their multiplication and sum can be greater than that. Since the prover can manipulate `k` freely for a given `n, r and a`, the prover can use `k` to overflow the sum and get a successful modulo operation.
+
+For example, let:
+
+```jsx
+n = 3
+k = 2^255
+r = 0
+a = 2^255
+```
+
+The statement `0 = 2^255mod3` is false. But this statement will prove successfully in the circuit. This is because this is the actual constraint that is checked (which is true in this case):
+
+`3 * 2^255 + 0 = 2^255 (mod 2^256).`
+
+Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will succesfully be verified. 
+
+**The Fix**
+
+The fix for this issue is to add another constraint forcing `k * n + r` to be less than `2^256` so that no overflows happen. This is enough to avoid the overflow and accurately prove that `r = a mod n` for any `r, a, and n` less than `2^256`.
+
+**References**
+
+1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
+2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
