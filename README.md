@@ -138,7 +138,7 @@ template RangeProof(bits) {
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 3. Arithmetic Over/Under Flows, 4. Mismatching Bit Lengths
 
-Identified By: [Andrew He](https://github.com/ecnerwala) and [Veridise](https://veridise.com/) independently
+Identified By: [Andrew He](https://github.com/ecnerwala) and [Veridise Team](https://veridise.com/) independently
 
 The BigMod circuit, used for the modulo operation on big integers, was missing a bit length check on the output remainder. This constraint needs to be added to prevent 
 
@@ -212,7 +212,7 @@ for (var i = 0; i < k; i++) {
 
 Related Vulnerabilities: 3. Arithmetic Over/Under Flows
 
-Identified By: EF PSE Team
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
 
 The Semaphore smart contracts performed range checks in some places but not others. The range checks were to ensure that all public inputs were less than the snark scalar field order. However, these checks weren’t enforced in all the necessary places. This could cause new Semaphore group owners to unknowingly create a group that will always fail verification. 
 
@@ -262,7 +262,7 @@ function _createGroup(
 
 Related Vulnerabilities: 3. Arithmetic Over/Under Flows
 
-Identified By: EF PSE Team
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
 
 The Zk-Kit smart contracts implement an incremental merkle tree. The intent is for this merkle tree to be involved with zk proofs, so all values must be less than the snark scalar field order in order to prevent overflows.
 
@@ -318,7 +318,7 @@ require(zero < SNARK_SCALAR_FIELD, "IncrementalBinaryTree: leaf must be < SNARK_
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 4. Mismatching Bit Lengths
 
-Identified By: Aztec Team
+Identified By: [Aztec Team](https://aztec.network/)
 
 Funds in the Aztec protocol are held in what are called “note commitments”. Once a note commitment is spent, it should not be possible to spend it again. However, due to a missing bit length check, an attacker could spend a single note commitment multiple times.
 
@@ -372,7 +372,7 @@ Instead of only constraining signature validation in the SNARK circuit, constrai
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
 
-Identified By: EF PSE Team
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
 
 MACI is a dapp for collusion resistant voting on-chain. Encrypted votes are sent on-chain and a trusted coordinator decrypts the votes off-chain, creates a SNARK proving the results, and then verifies the proof on-chain. The SNARK circuit logic aims to prevent the coordinator from censoring any valid vote - the proof should fail verification if the coordinator attempts to do so. However, a missing logic constraint in the circuit allows the coordinator to shuffle some votes and render targeted votes as invalid. This effectively allows the coordinator to censor any vote they choose.
 
@@ -423,7 +423,7 @@ This check ensures that the vote message is applied to the intended public key (
 
 Related Vulnerabilities: 6. Frozen Heart
 
-Identified By: TrailOfBits Team
+Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
 
 The bulletproof paper, which outline the bulletproof zero knowledge proof protocol, outlines how to use the Fiat-Shamir transformation to make the proof non-interactive. However, their recommended implementation of the Fiat-Shamir transformation left out a crucial component. This missing component in the non-interactive version of the protocol allowed malicious provers to forge proofs.
 
@@ -465,7 +465,7 @@ In order to prevent this Frozen Heart vulnerability, the Pedersen commitment sho
 
 Related Vulnerabilities: 6. Frozen Heart
 
-Identified By: TrailOfBits
+Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
 
 Please see *8. Bulletproofs: Frozen Heart* for a more in-depth background.
 
@@ -493,7 +493,7 @@ The fix for these vulnerabilities differs for each implementation affected, but 
 
 Related Vulnerabilities: 7. Trusted Setup Leak
 
-Identified By: Zcash Team
+Identified By: [Zcash Team](https://z.cash/)
 
 The Zcash zero-knowledge proofs are based on a modified version of the Pinocchio protocol. This protocol relies on a trusted setup of parameters based on the Zcash circuit. However, some of the parameters generated as part of this trusted setup allow a malicious prover to forge a proof that creates new Zcash tokens.
 
