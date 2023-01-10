@@ -141,7 +141,7 @@ Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circ
 
 Identified By: [Andrew He](https://github.com/ecnerwala) and [Veridise Team](https://veridise.com/) independently
 
-The BigMod circuit, used for the modulo operation on big integers, was missing a bit length check on the output remainder. This constraint needs to be added to prevent 
+The BigMod circuit, used for the modulo operation on big integers, was missing a bit length check on the output remainder. This constraint needs to be added to prevent an attacker from using an unexpectedly large remainder value. This can break a protocol in various ways, depending on how they use this circuit.
 
 **Background**
 
