@@ -25,6 +25,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  10. [Zcash: Trusted Setup Leak](#zcash-1)
  11. [MiMC Hash: Missing Constraint](#mimc-1)
  12. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-1)
+ 13. [Circom-Pairing: Missing Constraint](#circom-pairing-1)
  
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -616,6 +617,74 @@ The fix for this issue is to add another constraint forcing `k * n + r` to be le
 
 1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
 2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
+
+## <a name="circom-pairing-1">13. Circom-Pairing: Missing Constraint</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 4. Mismatching Bit Lengths
+
+Identified By: [Veridise Team](https://veridise.com/)
+
+The Circom-Pairing circuits, written in circom, are used for the [Succinct Labs'](https://succinct.xyz/) bridge that is based on cryptographic protocols. However, the circuits were missing a constraint to ensure proper range checks. 
+
+**Background**
+
+The Circom-Pairing circuit needs to use integers larger than the prime field (254 bits), so it uses the circom big-int library. Therefore, numbers are represented as `k`-length arrays of `n`-bit numbers to represent a much larger number. Even though Circom-Pairing uses very large numbers, there is still a max range of expected numbers to be used. To ensure that numbers are constrained to the expected max range, the following circuit is often used:
+
+```jsx
+template BigLessThan(n, k){
+  signal input a[k];
+  signal input b[k];
+  signal output out;
+  ...
+}
+```
+
+The output of this circuit will be `1` if `a < b`, and `0` otherwise.
+
+**The Vulnerability**
+
+The vulnerability arose in the `CoreVerifyPubkeyG1` circuit:
+
+```jsx
+template CoreVerifyPubkeyG1(n, k){
+  ...
+  var q[50] = get_BLS12_381_prime(n, k);
+  
+  component lt[10];
+  // check all len k input arrays are correctly formatted bigints < q (BigLessThan calls Num2Bits)
+  for(var i=0; i<10; i++){
+    lt[i] = BigLessThan(n, k);
+    for(var idx=0; idx<k; idx++)
+      lt[i].b[idx] <== q[idx];
+  }
+  for(var idx=0; idx<k; idx++){
+    lt[0].a[idx] <== pubkey[0][idx];
+    lt[1].a[idx] <== pubkey[1][idx];
+    ... // Initializing parameters for rest of the inputs
+}
+```
+The `BigLessThan` circuit is used to constrain `pubkey < q` to ensure that the pubkey values are correctly formatted bigints. However, the rest of the circuit never actually checks the output of these `BigLessThan` circuits. So, even if a proof has `pubkey >= q` and `BigLessThan` outputs `0`, the proof will successfully be verified. This could cause unexpected behavior as the cryptographic protocol depends on these numbers being within the expected range.
+
+**The Fix**
+
+The fix required a constraint on all of the outputs of the `BigLessThan` circuits to ensure that each one had an output of `1`. The following snippet was added to fix this:
+
+```jsx
+var r = 0;
+for(var i=0; i<10; i++){
+    r += lt[i].out;
+}
+r === 10;
+```
+
+Once this was added, each `BigLessThan` circuit was then constrained to equal `1`. Now, the `pubkey` inputs can be trusted to be in the expected range.
+
+**References**
+
+1. [Veridise Explainer Article](https://medium.com/veridise/circom-pairing-a-million-dollar-zk-bug-caught-early-c5624b278f25)
+2. [Commit of the Fix](https://github.com/yi-sun/circom-pairing/pull/21/commits/c686f0011f8d18e0c11bd87e0a109e9478eb9e61)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
