@@ -23,9 +23,9 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  8. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
  9. [PlonK: Frozen Heart](#plonk-1)
  10. [Zcash: Trusted Setup Leak](#zcash-1)
- 11. [MiMC Hash: Missing Constraint](#mimc-1)
- 12. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-1)
- 13. [Circom-Pairing: Missing Constraint](#circom-pairing-1)
+ 11. [MiMC Hash: Assigned but not Constrained](#mimc-1)
+ 12. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
+ 13. [Circom-Pairing: Missing Output Check Constraint](#circom-pairing-1)
  
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -35,6 +35,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  5. [Unused Public Inputs Optimized Out](#unused-pub-inputs)
  6. [Frozen Heart: Forging of Zero Knowledge Proofs](#frozen-heart)
  7. [Trusted Setup Leak](#trusted-setup-leak)
+ 8. [Assigned but not Constrained](#assigned-not-constrained)
 
 #### [Zk Security Resources](#zk-security-resources-header)
  
@@ -517,11 +518,11 @@ Since the toxic parameters were visible on the trusted setup ceremony document, 
 2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
 3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
 
-## <a name="mimc-1">11. MiMC Hash: Missing Constraint</a>
+## <a name="mimc-1">11. MiMC Hash: Assigned but not Constrained</a>
 
 **Summary**
 
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
 
 Identified By: [Kobi Gurkan](https://github.com/kobigurk)
 
@@ -539,7 +540,7 @@ During a computation step for this circuit, the `=` operator was used instead of
 outs[0] = S[nInputs - 1].xL_out;
 ```
 
-So this line of code did not constrain outs[0] to S[nInputs - 1].xL_out. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs. 
+The `=` operator assigned `S[nInputs - 1].xL_out` to `outs[0]`, but did not actually constrain it. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs. 
 
 Since this hash function was used in the TornadoCash circuits, this would allow the attacker to fake a merkle root and withdraw someone else's ETH from the contract.
 
@@ -555,11 +556,11 @@ outs[0] <== S[nInputs - 1].xL_out;
 1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
 2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
 
-## <a name="zkevm-1">12. PSE & Scroll zkEVM: Missing Constraint</a>
+## <a name="zkevm-1">12. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
 
 **Summary**
 
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
 
 Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
 
@@ -588,7 +589,7 @@ And the prover must supply `a, b, c, and d`. So the Modulo gadget inputs `k, n, 
 k * n + r == a (modulo 2**256)
 ```
 
-This constraint is intended to prove that `r = a mod n`.
+This constraint is intended to prove that `r = a mod n`. The assignment in the `assign` function calculates this correctly, but the constraints do not enforce it properly.
 
 **The Vulnerability**
 
@@ -607,7 +608,7 @@ The statement `0 = 2^255mod3` is false. But this statement will prove successful
 
 `3 * 2^255 + 0 = 2^255 (mod 2^256).`
 
-Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will succesfully be verified. 
+Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will succesfully be verified.
 
 **The Fix**
 
@@ -618,7 +619,7 @@ The fix for this issue is to add another constraint forcing `k * n + r` to be le
 1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
 2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
 
-## <a name="circom-pairing-1">13. Circom-Pairing: Missing Constraint</a>
+## <a name="circom-pairing-1">13. Circom-Pairing: Missing Output Check Constraint</a>
 
 **Summary**
 
@@ -927,6 +928,7 @@ As explained in the TrailOfBits’ explanation (linked in the references below),
 1. [TrailOfBits explanation on the Frozen Heart bugs they discovered](https://blog.trailofbits.com/2022/04/13/part-1-coordinated-disclosure-of-vulnerabilities-affecting-girault-bulletproofs-and-plonk/)
 
 ## <a name="trusted-setup-leak">7. Trusted Setup Leak</a>
+
 Many popular zk protocols require what is known as a trusted setup. The trusted setup is used to generate the parameters necessary for a prover to create sound zk proofs. However, the setup also involves parameters that need to be hidden to everyone. These are known as "toxic waste". If the toxic waste is revealed to a party, then they would be able to forge zk proofs for that system. The toxic waste is usually kept private in practice through the use of multi-party computation. 
 
 Older zk protocols such as Pinocchio and Groth16 require a new trusted setup for each unique circuit. This creates problems whenever a project needs to update their circuits because then they would need to redo the trusted setup. Newer protocols such as MARLIN and PLONK still require a trusted setup, but only once. These protocols' setup is known as "universal" since it can be used for multiple programs, making upgrades much easier. Other protocols such as Bulletproofs and STARKs do not require trusted setups at all. 
@@ -940,8 +942,84 @@ See the references below for more details on toxic waste and how trusted setups 
 3. [Setup Ceremonies](https://zkproof.org/2021/06/30/setup-ceremonies/)
 4. [Zcash Soundness Bug](https://electriccoin.co/blog/zcash-counterfeiting-vulnerability-successfully-remediated/)
 
+## <a name="assigned-not-constrained">8. Assigned but not Constrained</a>
 
-This repo was inspired by a few other github repos that also document common vulnerabilities -
+A very common bug and misunderstanding is the difference between assignments and constraints. For zk circuits, constraints are the mathematical equations that must be satisfied by any given inputs for a proof to be valid. If any of the inputs result in one of the constraint equations to be incorrect, a valid proof is not possible (well, extremely unlikely).
+
+Assignments, on the other hand, simply assign a value to a variable during proof generation. Assignments do not have to be followed for a valid proof to be created. Often times, an assignment can be used, in combination with other constraints, to reduce the total number of constraints used. 
+
+Constrains actually add equations to the R1CS file whereas assignments do not. 
+
+**Circom Case and Example**
+
+A great example that highlights the difference between assignment and constraint is the `IsZero` circom circuit:
+
+```jsx
+pragma circom 2.0.0;
+
+template IsZero() {
+    signal input in;
+    signal output out;
+    signal inv;
+    inv <-- in!=0 ? 1/in : 0;
+    out <== -in*inv +1;
+    in*out === 0;
+}
+
+component main {public [in]}= IsZero();
+```
+
+In circom, the `<--`, `-->` and `=` operators are assignments, whereas the `<==`, `==>`, and `===` operators are constraints. So, `inv` is assigned `1/in` if `in` is not `0` and is assigned `0` otherwise. This is not a constraint - a prover can assign whatever they want to `inv` as long as it satisfies the constraints. We will see, however, that even if the prover inputs values other than the expected assignment for `inv`, `IsZero` will still be constrained to output `1` if `in == 0` and `0` otherwise.
+
+There are 2 cases to consider, `in` is zero and `in` is nonzero. If `in` is zero, then the first constraint `out <== -in*inv + 1` forces `out == 1`, and the second constraint `in*out === 0` is satisfied. So the circuit acts as expected, no matter what the prover inputs for `inv`. For the case that `in != 0`, then by the second constraint, `out` must be `0`. Therefore the first constraint must force that `-in*inv + 1 == 0`, and so `in*inv == 1`. This effectively constrains `inv` to equal the inverse of `in` as expected. Even though `inv` is assigned at will by the prover, the added constraints force it to actually be the inverse of `in` when `in != 0`. The circuit acts as expected for both cases of `in == 0` and when `in != 0`.
+
+A good question is why don't we remove the first constraint and simplify the code to the following:
+
+```jsx
+template IsZero() {
+    signal in;
+    signal out;
+    signal temp;
+    temp <-- in!= 0 ? 0 : 1; 
+    out === temp; 
+}
+```
+
+The problem here is that `temp` is assigned to `in != 0 ? 0 : 1` and not actually constrained. So a trustworthy prover will always run this code and generate successful proofs, but a malicious prover can alter the code to assign anything to `temp`. A malicious prover could copy this circuit and change the `temp` assignment to `temp <-- 1;` so that the circuit always outputs `1`. Their proofs generated from their slightly changed code would successfully pass a verifier built from this example circuit. We need the `out <== -in*temp +1;` constraint to ensure that `temp` is actually the inverse of `in`.
+
+Another good question is why don't we constrain instead of assign: `inv <== in!=0 ? 1/in : 0;`. This is because circom does not support the automatic constraint of a ternary operator. It adds more than one constraint behind the scenes which affects performance. For example, the [Mux1](https://github.com/iden3/circomlib/blob/master/circuits/mux1.circom) circuit is often used in place of the ternary operator, but it adds more than one constraint. So the authors of the `IsZero` circuit have found a creative way to reduce the constraint count.
+
+**Halo2 Case**
+
+This type of bug can easily happen with Halo2 circuits as well - maybe even more likely because assigning is done separately from constraints. In Halo2, often times the constraints are created in a `configure` function, while the assignments are done in an `assign` function. It is easy for developers to see that the circuit is satisfied because the `assign` function correctly gives the desired inputs. However, if the `configure` function is missing a constraint, a malicious prover can fork the code and change the `assign` function to target the missing constraint. 
+
+A good example of this bug is from the SHL and SHR opcode circuit for the PSE zkEVM. The opcode circuit takes as input a `shift` variable and a `shf0` variable:
+
+```jsx
+let shift = cb.query_word_rlc();
+let shf0 = cb.query_cell();
+
+```
+
+Shf0 is assumed to be the first byte of the `shift` variable. There are later constraints added on `shf0` instead of `shift` because it is cheaper constraint-wise to only consider the first byte. However, there was a missing constraint forcing `shf0` to be the first byte of `shift`. It is easy to miss this because `shf0` and `shift` are properly assigned in the assign function:
+
+```jsx
+let shf0 = pop1.to_le_bytes()[0];
+self.shift.assign(region, offset, Some(pop1.to_le_bytes()))?;
+```
+
+The fix was to add a constraint forcing `shf0` to equal the first byte of `shift`. 
+
+**Preventative Techniques**
+
+To prevent these types of bugs, it is important to understand the ins and outs of whatever coding language was used to create the circuits. That way one can quickly identify what's constrained and what's assigned. Additionally, it is extremely important to go over each constraint in detail to ensure that the system is constrained to the exact expected behavior. Do not consider assignments when doing this, only the constraints. A great way to ensure your constrains are sufficient is through [formal verification](https://en.wikipedia.org/wiki/Formal_verification). Some tools are currently in the process that will help enable quick formal verification for circom and halo2 circuits. 
+
+**References**
+1. [Circom Documentation](https://docs.circom.io/circom-language/signals/)
+2. [CircomLib IsZero Circuit](https://github.com/iden3/circomlib/blob/cff5ab6288b55ef23602221694a6a38a0239dcc0/circuits/comparators.circom#L24-L34)
+3. [PSE zkEVM Shf0 Bug](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/1124)
+
+This repo was inspired by a few other github repos that also document common vulnerabilities (but for solidity) -
 - [(Not So) Smart Contracts](https://github.com/crytic/not-so-smart-contracts)
 - [Solidity Security Blog](https://github.com/sigp/solidity-security-blog)
 - [List of Security Vulnerabilities](https://github.com/runtimeverification/verified-smart-contracts/wiki/List-of-Security-Vulnerabilities)
