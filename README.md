@@ -15,17 +15,18 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
 #### [Bugs in the Wild](#bugs-in-the-wild-header)
  1. [Dark Forest v0.3: Missing Bit Length Check](#dark-forest-1)
  2. [BigInt: Missing Bit Length Check](#bigint-1)
- 3. [Semaphore: Missing Smart Contract Range Check](#semaphore-1)
- 4. [Zk-Kit: Missing Smart Contract Range Check](#zk-kit-1)
- 5. [Aztec 2.0: Missing Bit Length Check / Nondeterministic Nullifier](#aztec-1)
- 6. [0xPARC StealthDrop: Nondeterministic Nullifier](#stealthdrop-1)
- 7. [MACI 1.0: Under-constrained Circuit](#maci-1)
- 8. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
- 9. [PlonK: Frozen Heart](#plonk-1)
- 10. [Zcash: Trusted Setup Leak](#zcash-1)
- 11. [MiMC Hash: Assigned but not Constrained](#mimc-1)
- 12. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
- 13. [Circom-Pairing: Missing Output Check Constraint](#circom-pairing-1)
+ 3. [Circom-Pairing: Missing Output Check Constraint](#circom-pairing-1)
+ 4. [Semaphore: Missing Smart Contract Range Check](#semaphore-1)
+ 5. [Zk-Kit: Missing Smart Contract Range Check](#zk-kit-1)
+ 6. [Aztec 2.0: Missing Bit Length Check / Nondeterministic Nullifier](#aztec-1)
+ 7. [0xPARC StealthDrop: Nondeterministic Nullifier](#stealthdrop-1)
+ 8. [MACI 1.0: Under-constrained Circuit](#maci-1)
+ 9. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
+ 10. [PlonK: Frozen Heart](#plonk-1)
+ 11. [Zcash: Trusted Setup Leak](#zcash-1)
+ 12. [MiMC Hash: Assigned but not Constrained](#mimc-1)
+ 13. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
+ 14. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
  
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -209,417 +210,7 @@ for (var i = 0; i < k; i++) {
 1. [Commit of the Fix](https://github.com/0xPARC/circom-ecdsa/pull/10)
 2. [More info on bigint representation](https://hackmd.io/hIfysDw4TtC_6RR4gzdjBw?view)
 
-## <a name="semaphore-1">3. Semaphore: Missing Smart Contract Range Check</a>
-
-**Summary**
-
-Related Vulnerabilities: 3. Arithmetic Over/Under Flows
-
-Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
-
-The Semaphore smart contracts performed range checks in some places but not others. The range checks were to ensure that all public inputs were less than the snark scalar field order. However, these checks weren’t enforced in all the necessary places. This could cause new Semaphore group owners to unknowingly create a group that will always fail verification. 
-
-**Background**
-
-Semaphore is a dapp built on Ethereum that allows users to prove their membership of a group and send signals such as votes or endorsements without revealing their original identity. Essentially, trusted coordinators create a group (with a group Id) and add members via the smart contracts. Members can then submit zero knowledge proofs to the coordinator that prove their membership of the group and optionally contain a signal with it.
-
-**The** **Vulnerability**
-
-Since the Solidity *uint256* type can hold numbers larger than the snark scalar field order, it is important to be weary of overflows. In order to prevent unwanted overflows, the Semaphore verifier smart contract automatically fails if a public input is greater than the snark scalar field order:
-
-```jsx
-// From Semaphore/contracts/base/Verifier.sol (outdated)
-require(input[i] < snark_scalar_field, "verifier-gte-snark-scalar-field");
-```
-
-When a coordinator creates a new group, they can input any valid *uint256* value as the id. This is a problem since the id is a public input for the zk proof. If the id is greater than the snark scalar field order, the verifier will always revert and the group isn’t operable.
-
-**The Fix**
-
-To prevent an inoperable group from being created, a check on the group Id is needed. This check needs to ensure that the new group id will be less than the snark scalar field order:
-
-```jsx
-// From Semaphore/contracts/base/SemaphoreGroups.sol
-function _createGroup(
-    uint256 groupId,
-    uint8 depth,
-    uint256 zeroValue
-  ) internal virtual {
-		// The Fix is the following require statement:
-    require(groupId < SNARK_SCALAR_FIELD, "SemaphoreGroups: group id must be < SNARK_SCALAR_FIELD");
-    require(getDepth(groupId) == 0, "SemaphoreGroups: group already exists");
-
-    groups[groupId].init(depth, zeroValue);
-    emit GroupCreated(groupId, depth, zeroValue);
-  }
-```
-
-**References**
-
-1. [Reported Github Issue](https://github.com/semaphore-protocol/semaphore/issues/90)
-2. [Commit of the Fix](https://github.com/semaphore-protocol/semaphore/pull/91)
-
-## <a name="zk-kit-1">4. Zk-Kit: Missing Smart Contract Range Check</a>
-
-**Summary**
-
-Related Vulnerabilities: 3. Arithmetic Over/Under Flows
-
-Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
-
-The Zk-Kit smart contracts implement an incremental merkle tree. The intent is for this merkle tree to be involved with zk proofs, so all values must be less than the snark scalar field order in order to prevent overflows.
-
-**Background**
-
-Semaphore is the first consumer of the Zk-Kit merkle tree implementation. When members sign up via the Semaphore smart contracts, they use an *identityCommitment* that is stored in the on-chain Zk-Kit merkle tree. The zero knowledge proof will then prove that they have a valid commitment in the tree.
-
-**The** **Vulnerability**
-
-When initializing the merkle tree, you must specify a value for the zero leaf:
-
-```jsx
-// From zk-kit/incremental-binary-tree.sol/contracts/IncrementalBinaryTree.sol
-// before the fix
-function init(
-    IncrementalTreeData storage self,
-    uint8 depth,
-    uint256 zero
-  ) public {
-    require(depth > 0 && depth <= MAX_DEPTH, "IncrementalBinaryTree: tree depth must be between 1 and 32");
-
-    self.depth = depth;
-
-    for (uint8 i = 0; i < depth; i++) {
-      self.zeroes[i] = zero;
-      zero = PoseidonT3.poseidon([zero, zero]);
-    }
-
-    self.root = zero;
-  }
-```
-
-Since the Solidity *uint256* allows for numbers greater than the snark scalar field order, a user could unknowingly initialize a merkle tree with the zero leaf value greater than the snark scalar field order. This will also directly cause overflows if the zero leaf is part of a merkle tree inclusion proof needed for a zk proof.
-
-**The Fix**
-
-During initialization, it must be enforced that the given zero leaf value is less than the snark scalar field order. To enforce this, the following require statement was added to the *init* function:
-
-```jsx
-// From zk-kit/incremental-binary-tree.sol/contracts/IncrementalBinaryTree.sol
-// after the fix
-require(zero < SNARK_SCALAR_FIELD, "IncrementalBinaryTree: leaf must be < SNARK_SCALAR_FIELD");
-```
-
-**References**
-
-1. [Reported Github Issue](https://github.com/privacy-scaling-explorations/zk-kit/issues/23)
-2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zk-kit/pull/24)
-
-## <a name="aztec-1">5. Aztec 2.0: Missing Bit Length Check / Nondeterministic Nullifier</a>
-
-**Summary**
-
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 4. Mismatching Bit Lengths
-
-Identified By: [Aztec Team](https://aztec.network/)
-
-Funds in the Aztec protocol are held in what are called “note commitments”. Once a note commitment is spent, it should not be possible to spend it again. However, due to a missing bit length check, an attacker could spend a single note commitment multiple times.
-
-**Background**
-
-Whenever a new note commitment is created, it is stored in a merkle tree on-chain. In order to prevent double spending of a single note commitment, a nullifier is posted on-chain after the note is spent. If the nullifier was already present on-chain, then the note cannot be spent.
-
-**The Vulnerability**
-
-The nullifier generation process should be deterministic so that the same nullifier is generated for the same note commitment every time. However, due to a missing bit length check, the process was not deterministic. The nullifier was generated based on the note commitment index in the merkle tree. The code assumed the index to be a 32 bit number, but there was no constraint enforcing this check.
-
-An attacker could use a number larger than 32 bits for the note index, as long as the first 32 bits matched the correct index. Since they can generate many unique numbers that have the same first 32 bits, a different nullifier will be created for each number. This allows them to spend the same note commitment multiple times.
-
-**The Fix**
-
-A bit length check was needed on the given note commitment index to enforce that it was at max 32 bits.
-
-**References**
-
-1. [Aztec Bug Disclosure](https://hackmd.io/@aztec-network/disclosure-of-recent-vulnerabilities)
-
-## <a name="stealthdrop-1">6. 0xPARC StealthDrop: Nondeterministic Nullifier</a>
-
-**Summary**
-
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
-
-Identified By: [botdad](https://twitter.com/0xB07DAD)
-
-StealthDrop requires users post a nullifier on-chain when they claim an airdrop. If they try to claim the airdrop twice, the second claim will fail. However, ECDSA signatures were used as the nullifier and these signatures are nondeterministic. Therefore different signatures were valid nullifiers for a single claim and users could claim an airdrop multiple times by sending the different valid signatures.
-
-**Background**
-
-In order to claim an airdrop, users must post a nullifier on-chain. If the nullifier is already present on-chain, the airdrop will fail. The nullifier is supposed to be computed in a deterministic way such that given the same input parameters (the user’s claim in this case), the output nullifier will always be the same. The initial nullifier generation process required users to sign a particular message with their ECDSA private key. The resultant signature is the nullifier that they need to post on-chain when claiming an airdrop.
-
-**The Vulnerability**
-
-ECDSA signature validation is nondeterministic - a user can use a private key to sign a message in multiple ways that will all pass signature verification. When users create the SNARK to claim an airdrop, they use the nullifier as a public input. The SNARK circuit enforces that the nullifier is a valid signature. Since the users can create multiple valid signatures with the same key and message, they can create multiple proofs with different nullifiers. This allows them to submit these separate proofs and claim an airdrop multiple times.
-
-**The Fix**
-
-Instead of only constraining signature validation in the SNARK circuit, constraints must also be added on the signature creation process so that the signatures are determinsitic. This was originally left out because in order to constrain the signature creation process, the private key is needed as a private input. The StealthDrop team wanted to avoid involving the private key directly. However, due to the vulnerability described, the private key is needed in the circuit to make the signature creation process deterministic.
-
-**References**
-
-1. [0xPARC Twitter Thread Explanation](https://twitter.com/0xPARC/status/1493705025385906179)
-
-## <a name="maci-1">7. MACI 1.0: Under-constrained Circuit</a>
-
-**Summary**
-
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
-
-Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
-
-MACI is a dapp for collusion resistant voting on-chain. Encrypted votes are sent on-chain and a trusted coordinator decrypts the votes off-chain, creates a SNARK proving the results, and then verifies the proof on-chain. The SNARK circuit logic aims to prevent the coordinator from censoring any valid vote - the proof should fail verification if the coordinator attempts to do so. However, a missing logic constraint in the circuit allows the coordinator to shuffle some votes and render targeted votes as invalid. This effectively allows the coordinator to censor any vote they choose.
-
-**Background**
-
-In order to be able to vote, a user must sign up to the MACI smart contract with a public key. These public keys are stored on-chain in a merkle tree. Users need to know the private key of these public keys in order to vote. When users cast a vote, they encrypt their vote and post it on-chain. Users can override their previous vote by sending a new one. MACI has certain rules for a vote to be considered valid, and the newest valid vote will take precedence over all other votes. The vote includes a *stateIndex* which is the position of the associated public key in the merkle tree. If the voter doesn’t know the private key of the public key at *stateIndex*, the vote will be considered invalid. When the coordinator processes all of the votes, they must only count the newest valid vote for each user. The SNARK circuit logic is designed to constrain the coordinator to doing exactly that. Therefore, if the circuit works as intended, the coordinator is not able to create a proof of voting results that include invalid votes or exclude valid votes. It is censorship resistant.
-
-The circuit *ProcessMessages.circom* takes as input an array of user public keys -*currentStateLeaves[] -* along with the votes to process - *msgs[]*. The vote actions in the *msgs* array are processed on the public keys in the *currentStateLeaves* array:
-
-```jsx
-// The state leaves upon which messages are applied.
-// Pseudocode
-transform(currentStateLeaf[4], msgs[4]) ==> newStateLeaf4
-transform(currentStateLeaf[3], msgs[3]) ==> newStateLeaf3
-transform(currentStateLeaf[2], msgs[2]) ==> newStateLeaf2
-transform(currentStateLeaf[1], msgs[1]) ==> newStateLeaf1
-transform(currentStateLeaf[0], msgs[0]) ==> newStateLeaf0
-```
-
-In MACI, a valid vote message can be used to change a user’s public key. From that point on, user’s can only use the new public key to update/create votes. The *transform* function will output the updated state leaf with the new public key if it was changed.
-
-**The Vulnerability**
-
-The *currentStateLeaf* array is ordered by the coordinator. Therefore, the coordinator effectively has control over which public key a new vote message is applied to. Therefore, they can choose to apply a vote message from one user, to another user’s public key. This will cause that vote message to be considered invalid since it doesn’t match the public key. 
-
-There is a constraint ensuring that a message’s *stateIndex* matches the public key it was applied on, but this constraint only marks a vote message as invalid if so. Before the *stateIndex* is checked, the circuit checks other cases where the message may be invalid, such as if the public key matches this new vote message. If it gets marked as invalid, the *stateIndex* check won’t make any changes. This circuit is under-constrained.
-
-If a malicious coordinator wants to censor *msgs[3]* (the 4th voting message), then they will set *currentStateLeaf[3]* to the 0 leaf. Then, *msgs[3*] will be marked as invalid since the public key doesn’t match. The check that *currentStateLeaf[3].index === msgs[3].stateIndex* is avoided since the message is already invalid. The coordinator has effectively censored *msgs[3]*.
-
-**The Fix**
-
-The main issue that needs to be fixed is constraining voting messages to the intended public keys. The circuit is quite complicated so other changes needed to be made, but the most significant change was adding the following check before marking a vote message as invalid:
-
-```jsx
-// Pseudo code
-currentStateLeaf[i].index <== msgs[i].stateIndex
-```
-
-This check ensures that the vote message is applied to the intended public key (state leaf) before marking any message as invalid. Therefore, a coordinator can no longer mismatch vote messages to unintended public keys and purposefully mark them as invalid.
-
-**References**
-
-1. [Issue on Github](https://github.com/privacy-scaling-explorations/maci/issues/320)
-
-## <a name="bulletproofs-1">8. Bulletproofs Paper: Frozen Heart</a>
-
-**Summary**
-
-Related Vulnerabilities: 6. Frozen Heart
-
-Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
-
-The bulletproof paper, which outline the bulletproof zero knowledge proof protocol, outlines how to use the Fiat-Shamir transformation to make the proof non-interactive. However, their recommended implementation of the Fiat-Shamir transformation left out a crucial component. This missing component in the non-interactive version of the protocol allowed malicious provers to forge proofs.
-
-**Background**
-
-Many zero knowledge proof protocols are first designed in an interactive way where the prover and verifier must communicate with each other for multiple rounds in order for the proof to be created and subsequently verified. This often takes the form of:
-
-1. The prover creates a random value known as the commitment
-2. The verifier replies with a random value known as the challenge
-3. The prover uses the commitment, challenge, and their secret data to create a proof
-
-For the proof to be secure, the verifier’s challenge must be entirely unpredictable and uncontrollable by the prover.
-
-The Fiat-Shamir transformation allows the zero-knowledge proof protocol to become non-interactive by having the prover compute the challenge instead of the verifier. The prover should have no control in the challenge’s value, so the prover must use a hash of all public values, including the commitments. This way the prover cannot easily manipulate the proof to be accepted for invalid inputs.
-
-Bulletproofs use Pedersen commitments, which are of the form:
-
-```jsx
-commitment = (g^v)(h^gamma)
-```
-
-Here *g* and *h* are elliptic curve points and *v* is a secret number. The bulletproof is meant to prove that *v* falls within a certain range. Since this commitment is public, it should be included in the Fiat-Shamir transformation used in the protocol.
-
-**The Vulnerability**
-
-The bulletproof paper provided insecure details on how to implement the Fiat-Shamir transformation for the protocol. Their implementation did not include the Pedersen commitment in the Fiat-Shamir transformation. This means that the challenge value is independent of the Pedersen commitment and so the prover can keep trying random values for the commitment until they get a proof that succeeds for *v* outside of the desired range. For more details on how exactly this allows a malicious prover to forge a proof, please see the TrailOfBits’ explanation in the references section.
-
-**The Fix**
-
-In order to prevent this Frozen Heart vulnerability, the Pedersen commitment should be added to the Fiat-Shamir transformation hash. This will make the challenge directly dependent on the commitment and restrict the prover’s freedom when making the proof. The new restriction is enough to prevent the prover from forging proofs.
-
-**References**
-
-1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/15/the-frozen-heart-vulnerability-in-bulletproofs/)
-
-## <a name="plonk-1">9. PlonK: Frozen Heart</a>
-
-**Summary**
-
-Related Vulnerabilities: 6. Frozen Heart
-
-Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
-
-Please see *8. Bulletproofs: Frozen Heart* for a more in-depth background.
-
-Due to some ambiguity in the PlonK paper regarding Fiat-Shamir transformations, a few production implementations did not handle it correctly. The Fiat-Shamir transformation requires all public inputs to be included in the hash. However, some implementations did not properly include all of these public inputs. This allowed malicious provers to forge proofs to different extents, depending on the rest of the implementation details.
-
-**Background**
-
-The PlonK protocol is originally described as an interactive proof protocol between the prover and verifier. However, the paper provides some details on how to make it a non-interactive proof protocol. The paper outlines details on implementing the Fiat-Shamir transformation to make the protocol non-interactive, but it still lacks clarity on what inputs exactly are needed to make it secure.
-
-**The Vulnerability**
-
-Multiple implementations had a frozen heart vulnerability due to their implementation of the Fiat-Shamir transformation. Each implementation had missing public inputs to the hash for the Fiat-Shamir transformation, and thus gave more freedom to the prover when constructing proofs. With this increased freedom, a malicious prover could then forge a proof. The extent of the forgery depends on the rest of the implementation details and so it varied for the different implementations affected by this vulnerability. For more exact details about this vulnerability, please see the TrailOfBits’ explanation in the references section.
-
-**The Fix**
-
-The fix for these vulnerabilities differs for each implementation affected, but it generally includes a fix to the Fiat-Shamir transformation. The fix involves ensuring that all public inputs are included in the hash so that the prover does not have the freedom needed to forge a proof.
-
-**References**
-
-1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/18/the-frozen-heart-vulnerability-in-plonk/)
-
-## <a name="zcash-1">10. Zcash: Trusted Setup Leak</a>
-
-**Summary**
-
-Related Vulnerabilities: 7. Trusted Setup Leak
-
-Identified By: [Zcash Team](https://z.cash/)
-
-The Zcash zero-knowledge proofs are based on a modified version of the Pinocchio protocol. This protocol relies on a trusted setup of parameters based on the Zcash circuit. However, some of the parameters generated as part of this trusted setup allow a malicious prover to forge a proof that creates new Zcash tokens.
-
-**Background**
-
-For zero-knowledge protocols such as Pinocchio and Groth16, a trusted setup is required. The trusted setup is a way to generate the proper parameters needed so that the prover can generate a proof, and the verifier can properly verify it. The trusted setup process usually involves parameters that must be kept secret, otherwise malicious provers can forge proofs. These parameters are known as “toxic waste” and kept private through the use of multi-party computation. Therefore, it’s very important the trusted set-up process generates the correct parameters and keeps the toxic waste hidden. 
-
-**The Vulnerability**
-
-The trusted setup for Zcash’s implementation of Pinocchio generated extra parameters that leaked information about the toxic waste. These extra parameters allowed malicious provers to forge proofs that would create Zcash tokens out of nothing. The use of the extra parameters essentially allowed users to counterfeit tokens. However, this vulnerability was never exploited.
-
-**The Fix**
-
-Since the toxic parameters were visible on the trusted setup ceremony document, it was impossible to ensure no one had seen them. The issue was fixed by the Zcash Sapling upgrade which involved a new trusted setup. The new trusted setup was ensured to not release any toxic parameters. Please see the Zcash explanation in the references section for more details on the timeline of events.
-
-**References**
-
-1. [Zcash Explanation](https://electriccoin.co/blog/zcash-counterfeiting-vulnerability-successfully-remediated/)
-2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
-3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
-
-## <a name="mimc-1">11. MiMC Hash: Assigned but not Constrained</a>
-
-**Summary**
-
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
-
-Identified By: [Kobi Gurkan](https://github.com/kobigurk)
-
-The MiMC hash circuit from the circomlib package had a missing constraint during its computation logic. The circuit was under-constrained and nondeterministic because it didn't properly constrain MiMC inputs to the correct hash output.
-
-**Background**
-
-In circom constraints are created by the following three operators: `<==`, `===`, and `==>`. If other operators are used such as `<--`, `=`, or `-->`, then a constraint will not be added to the R1CS file. These other operators assign numbers or expressions to variables, but do not constrain them. Proper constraints are what is needed for the circuit to be sound.
-
-**The Vulnerability**
-
-During a computation step for this circuit, the `=` operator was used instead of the `<==` operator that was needed to create a constraint. Here is the code before the fix:
-
-```jsx
-outs[0] = S[nInputs - 1].xL_out;
-```
-
-The `=` operator assigned `S[nInputs - 1].xL_out` to `outs[0]`, but did not actually constrain it. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs. 
-
-Since this hash function was used in the TornadoCash circuits, this would allow the attacker to fake a merkle root and withdraw someone else's ETH from the contract.
-
-**The Fix**
-
-The fix was simply to change `=` to a constraint operator `<==`.
-```jsx
-outs[0] <== S[nInputs - 1].xL_out;
-```
-
-**References**
-
-1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
-2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
-
-## <a name="zkevm-1">12. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
-
-**Summary**
-
-Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
-
-Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
-
-The PSE & Scroll zkEVM modulo circuit was missing a constraint, which would allow a malicious prover to create a valid proof of a false modulo operation. Since the modulo operation is a basic building block for the zkEVM, the prover could convince the verifier of a wrong state update.
-
-**Background**
-
-The PSE & Scroll zkEVM circuits are programmed using their own fork of [Zcash's Halo2](https://github.com/zcash/halo2). Small components of the large zkEVM circuit can be broken down into what are called gadgets. In this case, the modulo gadget was missing a constraint.
-
-The Modulo gadget is intended to constrain:
-
-```jsx
-a mod n = r, if n!=0
-r = 0,       if n==0
-```
-
-The prover must supply `a, n, r, and k`, where they are all less than `2^256`. The Modulo gadget uses the MulAddWords gadget which constrains:
-
-```jsx
-a * b + c == d (modulo 2**256)
-```
-
-And the prover must supply `a, b, c, and d`. So the Modulo gadget inputs `k, n, r, a` for `a, b, c, d`. This creates the following constraint:
-
-```jsx
-k * n + r == a (modulo 2**256)
-```
-
-This constraint is intended to prove that `r = a mod n`. The assignment in the `assign` function calculates this correctly, but the constraints do not enforce it properly.
-
-**The Vulnerability**
-
-The vulnerability arises from the fact that the MulAddWords gadget is done modulo `2^256` and that `k * n + r` can also be greater than `2^256`. This is because even though `k, n, r` are all less than `2^256`, their multiplication and sum can be greater than that. Since the prover can manipulate `k` freely for a given `n, r and a`, the prover can use `k` to overflow the sum and get a successful modulo operation.
-
-For example, let:
-
-```jsx
-n = 3
-k = 2^255
-r = 0
-a = 2^255
-```
-
-The statement `0 = 2^255mod3` is false. But this statement will prove successfully in the circuit. This is because this is the actual constraint that is checked (which is true in this case):
-
-`3 * 2^255 + 0 = 2^255 (mod 2^256).`
-
-Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will succesfully be verified.
-
-**The Fix**
-
-The fix for this issue is to add another constraint forcing `k * n + r` to be less than `2^256` so that no overflows happen. This is enough to avoid the overflow and accurately prove that `r = a mod n` for any `r, a, and n` less than `2^256`.
-
-**References**
-
-1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
-2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
-
-## <a name="circom-pairing-1">13. Circom-Pairing: Missing Output Check Constraint</a>
+## <a name="circom-pairing-1">3. Circom-Pairing: Missing Output Check Constraint</a>
 
 **Summary**
 
@@ -686,6 +277,454 @@ Once this was added, each `BigLessThan` circuit was then constrained to equal `1
 
 1. [Veridise Explainer Article](https://medium.com/veridise/circom-pairing-a-million-dollar-zk-bug-caught-early-c5624b278f25)
 2. [Commit of the Fix](https://github.com/yi-sun/circom-pairing/pull/21/commits/c686f0011f8d18e0c11bd87e0a109e9478eb9e61)
+
+## <a name="semaphore-1">4. Semaphore: Missing Smart Contract Range Check</a>
+
+**Summary**
+
+Related Vulnerabilities: 3. Arithmetic Over/Under Flows
+
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
+
+The Semaphore smart contracts performed range checks in some places but not others. The range checks were to ensure that all public inputs were less than the snark scalar field order. However, these checks weren’t enforced in all the necessary places. This could cause new Semaphore group owners to unknowingly create a group that will always fail verification. 
+
+**Background**
+
+Semaphore is a dapp built on Ethereum that allows users to prove their membership of a group and send signals such as votes or endorsements without revealing their original identity. Essentially, trusted coordinators create a group (with a group Id) and add members via the smart contracts. Members can then submit zero knowledge proofs to the coordinator that prove their membership of the group and optionally contain a signal with it.
+
+**The** **Vulnerability**
+
+Since the Solidity *uint256* type can hold numbers larger than the snark scalar field order, it is important to be weary of overflows. In order to prevent unwanted overflows, the Semaphore verifier smart contract automatically fails if a public input is greater than the snark scalar field order:
+
+```jsx
+// From Semaphore/contracts/base/Verifier.sol (outdated)
+require(input[i] < snark_scalar_field, "verifier-gte-snark-scalar-field");
+```
+
+When a coordinator creates a new group, they can input any valid *uint256* value as the id. This is a problem since the id is a public input for the zk proof. If the id is greater than the snark scalar field order, the verifier will always revert and the group isn’t operable.
+
+**The Fix**
+
+To prevent an inoperable group from being created, a check on the group Id is needed. This check needs to ensure that the new group id will be less than the snark scalar field order:
+
+```jsx
+// From Semaphore/contracts/base/SemaphoreGroups.sol
+function _createGroup(
+    uint256 groupId,
+    uint8 depth,
+    uint256 zeroValue
+  ) internal virtual {
+		// The Fix is the following require statement:
+    require(groupId < SNARK_SCALAR_FIELD, "SemaphoreGroups: group id must be < SNARK_SCALAR_FIELD");
+    require(getDepth(groupId) == 0, "SemaphoreGroups: group already exists");
+
+    groups[groupId].init(depth, zeroValue);
+    emit GroupCreated(groupId, depth, zeroValue);
+  }
+```
+
+**References**
+
+1. [Reported Github Issue](https://github.com/semaphore-protocol/semaphore/issues/90)
+2. [Commit of the Fix](https://github.com/semaphore-protocol/semaphore/pull/91)
+
+## <a name="zk-kit-1">5. Zk-Kit: Missing Smart Contract Range Check</a>
+
+**Summary**
+
+Related Vulnerabilities: 3. Arithmetic Over/Under Flows
+
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
+
+The Zk-Kit smart contracts implement an incremental merkle tree. The intent is for this merkle tree to be involved with zk proofs, so all values must be less than the snark scalar field order in order to prevent overflows.
+
+**Background**
+
+Semaphore is the first consumer of the Zk-Kit merkle tree implementation. When members sign up via the Semaphore smart contracts, they use an *identityCommitment* that is stored in the on-chain Zk-Kit merkle tree. The zero knowledge proof will then prove that they have a valid commitment in the tree.
+
+**The** **Vulnerability**
+
+When initializing the merkle tree, you must specify a value for the zero leaf:
+
+```jsx
+// From zk-kit/incremental-binary-tree.sol/contracts/IncrementalBinaryTree.sol
+// before the fix
+function init(
+    IncrementalTreeData storage self,
+    uint8 depth,
+    uint256 zero
+  ) public {
+    require(depth > 0 && depth <= MAX_DEPTH, "IncrementalBinaryTree: tree depth must be between 1 and 32");
+
+    self.depth = depth;
+
+    for (uint8 i = 0; i < depth; i++) {
+      self.zeroes[i] = zero;
+      zero = PoseidonT3.poseidon([zero, zero]);
+    }
+
+    self.root = zero;
+  }
+```
+
+Since the Solidity *uint256* allows for numbers greater than the snark scalar field order, a user could unknowingly initialize a merkle tree with the zero leaf value greater than the snark scalar field order. This will also directly cause overflows if the zero leaf is part of a merkle tree inclusion proof needed for a zk proof.
+
+**The Fix**
+
+During initialization, it must be enforced that the given zero leaf value is less than the snark scalar field order. To enforce this, the following require statement was added to the *init* function:
+
+```jsx
+// From zk-kit/incremental-binary-tree.sol/contracts/IncrementalBinaryTree.sol
+// after the fix
+require(zero < SNARK_SCALAR_FIELD, "IncrementalBinaryTree: leaf must be < SNARK_SCALAR_FIELD");
+```
+
+**References**
+
+1. [Reported Github Issue](https://github.com/privacy-scaling-explorations/zk-kit/issues/23)
+2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zk-kit/pull/24)
+
+## <a name="aztec-1">6. Aztec 2.0: Missing Bit Length Check / Nondeterministic Nullifier</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 4. Mismatching Bit Lengths
+
+Identified By: [Aztec Team](https://aztec.network/)
+
+Funds in the Aztec protocol are held in what are called “note commitments”. Once a note commitment is spent, it should not be possible to spend it again. However, due to a missing bit length check, an attacker could spend a single note commitment multiple times.
+
+**Background**
+
+Whenever a new note commitment is created, it is stored in a merkle tree on-chain. In order to prevent double spending of a single note commitment, a nullifier is posted on-chain after the note is spent. If the nullifier was already present on-chain, then the note cannot be spent.
+
+**The Vulnerability**
+
+The nullifier generation process should be deterministic so that the same nullifier is generated for the same note commitment every time. However, due to a missing bit length check, the process was not deterministic. The nullifier was generated based on the note commitment index in the merkle tree. The code assumed the index to be a 32 bit number, but there was no constraint enforcing this check.
+
+An attacker could use a number larger than 32 bits for the note index, as long as the first 32 bits matched the correct index. Since they can generate many unique numbers that have the same first 32 bits, a different nullifier will be created for each number. This allows them to spend the same note commitment multiple times.
+
+**The Fix**
+
+A bit length check was needed on the given note commitment index to enforce that it was at max 32 bits.
+
+**References**
+
+1. [Aztec Bug Disclosure](https://hackmd.io/@aztec-network/disclosure-of-recent-vulnerabilities)
+
+## <a name="stealthdrop-1">7. 0xPARC StealthDrop: Nondeterministic Nullifier</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+
+Identified By: [botdad](https://twitter.com/0xB07DAD)
+
+StealthDrop requires users post a nullifier on-chain when they claim an airdrop. If they try to claim the airdrop twice, the second claim will fail. However, ECDSA signatures were used as the nullifier and these signatures are nondeterministic. Therefore different signatures were valid nullifiers for a single claim and users could claim an airdrop multiple times by sending the different valid signatures.
+
+**Background**
+
+In order to claim an airdrop, users must post a nullifier on-chain. If the nullifier is already present on-chain, the airdrop will fail. The nullifier is supposed to be computed in a deterministic way such that given the same input parameters (the user’s claim in this case), the output nullifier will always be the same. The initial nullifier generation process required users to sign a particular message with their ECDSA private key. The resultant signature is the nullifier that they need to post on-chain when claiming an airdrop.
+
+**The Vulnerability**
+
+ECDSA signature validation is nondeterministic - a user can use a private key to sign a message in multiple ways that will all pass signature verification. When users create the SNARK to claim an airdrop, they use the nullifier as a public input. The SNARK circuit enforces that the nullifier is a valid signature. Since the users can create multiple valid signatures with the same key and message, they can create multiple proofs with different nullifiers. This allows them to submit these separate proofs and claim an airdrop multiple times.
+
+**The Fix**
+
+Instead of only constraining signature validation in the SNARK circuit, constraints must also be added on the signature creation process so that the signatures are determinsitic. This was originally left out because in order to constrain the signature creation process, the private key is needed as a private input. The StealthDrop team wanted to avoid involving the private key directly. However, due to the vulnerability described, the private key is needed in the circuit to make the signature creation process deterministic.
+
+**References**
+
+1. [0xPARC Twitter Thread Explanation](https://twitter.com/0xPARC/status/1493705025385906179)
+
+## <a name="maci-1">8. MACI 1.0: Under-constrained Circuit</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
+
+MACI is a dapp for collusion resistant voting on-chain. Encrypted votes are sent on-chain and a trusted coordinator decrypts the votes off-chain, creates a SNARK proving the results, and then verifies the proof on-chain. The SNARK circuit logic aims to prevent the coordinator from censoring any valid vote - the proof should fail verification if the coordinator attempts to do so. However, a missing logic constraint in the circuit allows the coordinator to shuffle some votes and render targeted votes as invalid. This effectively allows the coordinator to censor any vote they choose.
+
+**Background**
+
+In order to be able to vote, a user must sign up to the MACI smart contract with a public key. These public keys are stored on-chain in a merkle tree. Users need to know the private key of these public keys in order to vote. When users cast a vote, they encrypt their vote and post it on-chain. Users can override their previous vote by sending a new one. MACI has certain rules for a vote to be considered valid, and the newest valid vote will take precedence over all other votes. The vote includes a *stateIndex* which is the position of the associated public key in the merkle tree. If the voter doesn’t know the private key of the public key at *stateIndex*, the vote will be considered invalid. When the coordinator processes all of the votes, they must only count the newest valid vote for each user. The SNARK circuit logic is designed to constrain the coordinator to doing exactly that. Therefore, if the circuit works as intended, the coordinator is not able to create a proof of voting results that include invalid votes or exclude valid votes. It is censorship resistant.
+
+The circuit *ProcessMessages.circom* takes as input an array of user public keys -*currentStateLeaves[] -* along with the votes to process - *msgs[]*. The vote actions in the *msgs* array are processed on the public keys in the *currentStateLeaves* array:
+
+```jsx
+// The state leaves upon which messages are applied.
+// Pseudocode
+transform(currentStateLeaf[4], msgs[4]) ==> newStateLeaf4
+transform(currentStateLeaf[3], msgs[3]) ==> newStateLeaf3
+transform(currentStateLeaf[2], msgs[2]) ==> newStateLeaf2
+transform(currentStateLeaf[1], msgs[1]) ==> newStateLeaf1
+transform(currentStateLeaf[0], msgs[0]) ==> newStateLeaf0
+```
+
+In MACI, a valid vote message can be used to change a user’s public key. From that point on, user’s can only use the new public key to update/create votes. The *transform* function will output the updated state leaf with the new public key if it was changed.
+
+**The Vulnerability**
+
+The *currentStateLeaf* array is ordered by the coordinator. Therefore, the coordinator effectively has control over which public key a new vote message is applied to. Therefore, they can choose to apply a vote message from one user, to another user’s public key. This will cause that vote message to be considered invalid since it doesn’t match the public key. 
+
+There is a constraint ensuring that a message’s *stateIndex* matches the public key it was applied on, but this constraint only marks a vote message as invalid if so. Before the *stateIndex* is checked, the circuit checks other cases where the message may be invalid, such as if the public key matches this new vote message. If it gets marked as invalid, the *stateIndex* check won’t make any changes. This circuit is under-constrained.
+
+If a malicious coordinator wants to censor *msgs[3]* (the 4th voting message), then they will set *currentStateLeaf[3]* to the 0 leaf. Then, *msgs[3*] will be marked as invalid since the public key doesn’t match. The check that *currentStateLeaf[3].index === msgs[3].stateIndex* is avoided since the message is already invalid. The coordinator has effectively censored *msgs[3]*.
+
+**The Fix**
+
+The main issue that needs to be fixed is constraining voting messages to the intended public keys. The circuit is quite complicated so other changes needed to be made, but the most significant change was adding the following check before marking a vote message as invalid:
+
+```jsx
+// Pseudo code
+currentStateLeaf[i].index <== msgs[i].stateIndex
+```
+
+This check ensures that the vote message is applied to the intended public key (state leaf) before marking any message as invalid. Therefore, a coordinator can no longer mismatch vote messages to unintended public keys and purposefully mark them as invalid.
+
+**References**
+
+1. [Issue on Github](https://github.com/privacy-scaling-explorations/maci/issues/320)
+
+## <a name="bulletproofs-1">9. Bulletproofs Paper: Frozen Heart</a>
+
+**Summary**
+
+Related Vulnerabilities: 6. Frozen Heart
+
+Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
+
+The bulletproof paper, which outline the bulletproof zero knowledge proof protocol, outlines how to use the Fiat-Shamir transformation to make the proof non-interactive. However, their recommended implementation of the Fiat-Shamir transformation left out a crucial component. This missing component in the non-interactive version of the protocol allowed malicious provers to forge proofs.
+
+**Background**
+
+Many zero knowledge proof protocols are first designed in an interactive way where the prover and verifier must communicate with each other for multiple rounds in order for the proof to be created and subsequently verified. This often takes the form of:
+
+1. The prover creates a random value known as the commitment
+2. The verifier replies with a random value known as the challenge
+3. The prover uses the commitment, challenge, and their secret data to create a proof
+
+For the proof to be secure, the verifier’s challenge must be entirely unpredictable and uncontrollable by the prover.
+
+The Fiat-Shamir transformation allows the zero-knowledge proof protocol to become non-interactive by having the prover compute the challenge instead of the verifier. The prover should have no control in the challenge’s value, so the prover must use a hash of all public values, including the commitments. This way the prover cannot easily manipulate the proof to be accepted for invalid inputs.
+
+Bulletproofs use Pedersen commitments, which are of the form:
+
+```jsx
+commitment = (g^v)(h^gamma)
+```
+
+Here *g* and *h* are elliptic curve points and *v* is a secret number. The bulletproof is meant to prove that *v* falls within a certain range. Since this commitment is public, it should be included in the Fiat-Shamir transformation used in the protocol.
+
+**The Vulnerability**
+
+The bulletproof paper provided insecure details on how to implement the Fiat-Shamir transformation for the protocol. Their implementation did not include the Pedersen commitment in the Fiat-Shamir transformation. This means that the challenge value is independent of the Pedersen commitment and so the prover can keep trying random values for the commitment until they get a proof that succeeds for *v* outside of the desired range. For more details on how exactly this allows a malicious prover to forge a proof, please see the TrailOfBits’ explanation in the references section.
+
+**The Fix**
+
+In order to prevent this Frozen Heart vulnerability, the Pedersen commitment should be added to the Fiat-Shamir transformation hash. This will make the challenge directly dependent on the commitment and restrict the prover’s freedom when making the proof. The new restriction is enough to prevent the prover from forging proofs.
+
+**References**
+
+1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/15/the-frozen-heart-vulnerability-in-bulletproofs/)
+
+## <a name="plonk-1">10. PlonK: Frozen Heart</a>
+
+**Summary**
+
+Related Vulnerabilities: 6. Frozen Heart
+
+Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
+
+Please see *8. Bulletproofs: Frozen Heart* for a more in-depth background.
+
+Due to some ambiguity in the PlonK paper regarding Fiat-Shamir transformations, a few production implementations did not handle it correctly. The Fiat-Shamir transformation requires all public inputs to be included in the hash. However, some implementations did not properly include all of these public inputs. This allowed malicious provers to forge proofs to different extents, depending on the rest of the implementation details.
+
+**Background**
+
+The PlonK protocol is originally described as an interactive proof protocol between the prover and verifier. However, the paper provides some details on how to make it a non-interactive proof protocol. The paper outlines details on implementing the Fiat-Shamir transformation to make the protocol non-interactive, but it still lacks clarity on what inputs exactly are needed to make it secure.
+
+**The Vulnerability**
+
+Multiple implementations had a frozen heart vulnerability due to their implementation of the Fiat-Shamir transformation. Each implementation had missing public inputs to the hash for the Fiat-Shamir transformation, and thus gave more freedom to the prover when constructing proofs. With this increased freedom, a malicious prover could then forge a proof. The extent of the forgery depends on the rest of the implementation details and so it varied for the different implementations affected by this vulnerability. For more exact details about this vulnerability, please see the TrailOfBits’ explanation in the references section.
+
+**The Fix**
+
+The fix for these vulnerabilities differs for each implementation affected, but it generally includes a fix to the Fiat-Shamir transformation. The fix involves ensuring that all public inputs are included in the hash so that the prover does not have the freedom needed to forge a proof.
+
+**References**
+
+1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/18/the-frozen-heart-vulnerability-in-plonk/)
+
+## <a name="zcash-1">11. Zcash: Trusted Setup Leak</a>
+
+**Summary**
+
+Related Vulnerabilities: 7. Trusted Setup Leak
+
+Identified By: [Zcash Team](https://z.cash/)
+
+The Zcash zero-knowledge proofs are based on a modified version of the Pinocchio protocol. This protocol relies on a trusted setup of parameters based on the Zcash circuit. However, some of the parameters generated as part of this trusted setup allow a malicious prover to forge a proof that creates new Zcash tokens.
+
+**Background**
+
+For zero-knowledge protocols such as Pinocchio and Groth16, a trusted setup is required. The trusted setup is a way to generate the proper parameters needed so that the prover can generate a proof, and the verifier can properly verify it. The trusted setup process usually involves parameters that must be kept secret, otherwise malicious provers can forge proofs. These parameters are known as “toxic waste” and kept private through the use of multi-party computation. Therefore, it’s very important the trusted set-up process generates the correct parameters and keeps the toxic waste hidden. 
+
+**The Vulnerability**
+
+The trusted setup for Zcash’s implementation of Pinocchio generated extra parameters that leaked information about the toxic waste. These extra parameters allowed malicious provers to forge proofs that would create Zcash tokens out of nothing. The use of the extra parameters essentially allowed users to counterfeit tokens. However, this vulnerability was never exploited.
+
+**The Fix**
+
+Since the toxic parameters were visible on the trusted setup ceremony document, it was impossible to ensure no one had seen them. The issue was fixed by the Zcash Sapling upgrade which involved a new trusted setup. The new trusted setup was ensured to not release any toxic parameters. Please see the Zcash explanation in the references section for more details on the timeline of events.
+
+**References**
+
+1. [Zcash Explanation](https://electriccoin.co/blog/zcash-counterfeiting-vulnerability-successfully-remediated/)
+2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
+3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
+
+## <a name="mimc-1">12. MiMC Hash: Assigned but not Constrained</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
+
+Identified By: [Kobi Gurkan](https://github.com/kobigurk)
+
+The MiMC hash circuit from the circomlib package had a missing constraint during its computation logic. The circuit was under-constrained and nondeterministic because it didn't properly constrain MiMC inputs to the correct hash output.
+
+**Background**
+
+In circom constraints are created by the following three operators: `<==`, `===`, and `==>`. If other operators are used such as `<--`, `=`, or `-->`, then a constraint will not be added to the R1CS file. These other operators assign numbers or expressions to variables, but do not constrain them. Proper constraints are what is needed for the circuit to be sound.
+
+**The Vulnerability**
+
+During a computation step for this circuit, the `=` operator was used instead of the `<==` operator that was needed to create a constraint. Here is the code before the fix:
+
+```jsx
+outs[0] = S[nInputs - 1].xL_out;
+```
+
+The `=` operator assigned `S[nInputs - 1].xL_out` to `outs[0]`, but did not actually constrain it. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs. 
+
+Since this hash function was used in the TornadoCash circuits, this would allow the attacker to fake a merkle root and withdraw someone else's ETH from the contract.
+
+**The Fix**
+
+The fix was simply to change `=` to a constraint operator `<==`.
+```jsx
+outs[0] <== S[nInputs - 1].xL_out;
+```
+
+**References**
+
+1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
+2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
+
+## <a name="zkevm-1">13. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
+
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
+
+The PSE & Scroll zkEVM modulo circuit was missing a constraint, which would allow a malicious prover to create a valid proof of a false modulo operation. Since the modulo operation is a basic building block for the zkEVM, the prover could convince the verifier of a wrong state update.
+
+**Background**
+
+The PSE & Scroll zkEVM circuits are programmed using their own fork of [Zcash's Halo2](https://github.com/zcash/halo2). Small components of the large zkEVM circuit can be broken down into what are called gadgets. In this case, the modulo gadget was missing a constraint.
+
+The Modulo gadget is intended to constrain:
+
+```jsx
+a mod n = r, if n!=0
+r = 0,       if n==0
+```
+
+The prover must supply `a, n, r, and k`, where they are all less than `2^256`. The Modulo gadget uses the MulAddWords gadget which constrains:
+
+```jsx
+a * b + c == d (modulo 2**256)
+```
+
+And the prover must supply `a, b, c, and d`. So the Modulo gadget inputs `k, n, r, a` for `a, b, c, d`. This creates the following constraint:
+
+```jsx
+k * n + r == a (modulo 2**256)
+```
+
+This constraint is intended to prove that `r = a mod n`. The assignment in the `assign` function calculates this correctly, but the constraints do not enforce it properly.
+
+**The Vulnerability**
+
+The vulnerability arises from the fact that the MulAddWords gadget is done modulo `2^256` and that `k * n + r` can also be greater than `2^256`. This is because even though `k, n, r` are all less than `2^256`, their multiplication and sum can be greater than that. Since the prover can manipulate `k` freely for a given `n, r and a`, the prover can use `k` to overflow the sum and get a successful modulo operation.
+
+For example, let:
+
+```jsx
+n = 3
+k = 2^255
+r = 0
+a = 2^255
+```
+
+The statement `0 = 2^255mod3` is false. But this statement will prove successfully in the circuit. This is because this is the actual constraint that is checked (which is true in this case):
+
+`3 * 2^255 + 0 = 2^255 (mod 2^256).`
+
+Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will succesfully be verified.
+
+**The Fix**
+
+The fix for this issue is to add another constraint forcing `k * n + r` to be less than `2^256` so that no overflows happen. This is enough to avoid the overflow and accurately prove that `r = a mod n` for any `r, a, and n` less than `2^256`.
+
+**References**
+
+1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
+2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
+
+## <a name="zkevm-2">14. PSE & Scroll zkEVM: Missing Constraint</a>
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
+
+Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
+
+The PSE & Scroll zkEVM SHL/SHR opcode circuit was missing a constraint, which would allow a malicious prover to create a valid proof of a false shift operation. Since the SHL/SHR opcode is a basic building block for the zkEVM, the prover could convince the verifier of a wrong state update.
+
+**Background**
+
+The SHL/SHR opcode (bit shift left and bit shift right) takes in two inputs from the stack: `x` and `shift`. For SHL it should output `x << shift` and for SHR it should output `x >> shift`. Since `x` and `shift` are on the stack, they each can be any 256 bit value. The calculation of a shift operation involves calculating `2^shift`. Since `shift` can be a very large number, this calculation in a circuit could become very expensive. A to avoid this is recognizing that whenever `shift > 255`, the output to the stack should be `0` both for SHL or SHR. Then make the circuit compute `2^shift` only when `shift <= 255`. This is what the zkEVM SHL/SHR opcode circuit does. Also note that this circuit is shared between both opcodes.
+
+**The Vulnerability**
+
+The opcode circuits take in `shf0` and `shift` as two separate variables, where `shf0` is meant to be the first byte of the `shift` variable. Then, if `shift <= 255`, the circuit calculates `2^shf0`. The `assign_exec_step` function properly assigns these two variables:
+
+```jsx
+let shf0 = pop1.to_le_bytes()[0];
+...
+self.shift.assign(region, offset, Some(pop1.to_le_bytes()))?;
+self.shf0.assign(region, offset, Value::known(u64::from(shf0).into()))?;
+```
+
+However, the `configure` function, where constraints are created for this opcode, does not properly constrain `shf0` to be the first byte of `shift`. This allows a malicious prover to fork this code and change the `assign_exec_step` function to assign whatever they want to `shf0`. This would allow them to successfully prove `2 << 1 outputs 8` if they assign `shf0 = 2` when it should actually be constrained to output `4`.
+
+**The Fix**
+
+The fix was to add the constraint forcing `shf0` to be the first byte of `shift`. This was done with the following code addition:
+
+```jsx
+instruction.constrain_zero(shf0 - FQ(shift.le_bytes[0]))
+```
+
+**References**
+
+1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/1124)
+2. [The Fix](https://github.com/privacy-scaling-explorations/zkevm-specs/pull/372/files)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
@@ -1012,7 +1051,7 @@ The fix was to add a constraint forcing `shf0` to equal the first byte of `shift
 
 **Preventative Techniques**
 
-To prevent these types of bugs, it is important to understand the ins and outs of whatever coding language was used to create the circuits. That way one can quickly identify what's constrained and what's assigned. Additionally, it is extremely important to go over each constraint in detail to ensure that the system is constrained to the exact expected behavior. Do not consider assignments when doing this, only the constraints. A great way to ensure your constrains are sufficient is through [formal verification](https://en.wikipedia.org/wiki/Formal_verification). Some tools are currently in the process that will help enable quick formal verification for circom and halo2 circuits. 
+To prevent these types of bugs, it is important to understand the ins and outs of whatever coding language was used to create the circuits. That way one can quickly identify what's constrained and what's assigned. Additionally, it is extremely important to go over each constraint in detail to ensure that the system is constrained to the exact expected behavior. Do not consider assignments when doing this, only the constraints. A great way to ensure your constraints are sufficient is through [formal verification](https://en.wikipedia.org/wiki/Formal_verification). Some tools are currently in the process that will help enable quick formal verification for circom and halo2 circuits. 
 
 **References**
 1. [Circom Documentation](https://docs.circom.io/circom-language/signals/)
