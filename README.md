@@ -432,7 +432,7 @@ ECDSA signature validation is nondeterministic - a user can use a private key to
 
 **The Fix**
 
-Instead of only constraining signature validation in the SNARK circuit, constraints must also be added on the signature creation process so that the signatures are determinsitic. This was originally left out because in order to constrain the signature creation process, the private key is needed as a private input. The StealthDrop team wanted to avoid involving the private key directly. However, due to the vulnerability described, the private key is needed in the circuit to make the signature creation process deterministic.
+Instead of only constraining signature validation in the SNARK circuit, constraints must also be added on the signature creation process so that the signatures are deterministic. This was originally left out because in order to constrain the signature creation process, the private key is needed as a private input. The StealthDrop team wanted to avoid involving the private key directly. However, due to the vulnerability described, the private key is needed in the circuit to make the signature creation process deterministic.
 
 **References**
 
@@ -497,7 +497,7 @@ Related Vulnerabilities: 6. Frozen Heart
 
 Identified By: [TrailOfBits Team](https://www.trailofbits.com/)
 
-The bulletproof paper, which outline the bulletproof zero knowledge proof protocol, outlines how to use the Fiat-Shamir transformation to make the proof non-interactive. However, their recommended implementation of the Fiat-Shamir transformation left out a crucial component. This missing component in the non-interactive version of the protocol allowed malicious provers to forge proofs.
+The bulletproof paper, which outlines the bulletproof zero knowledge proof protocol, outlines how to use the Fiat-Shamir transformation to make the proof non-interactive. However, their recommended implementation of the Fiat-Shamir transformation left out a crucial component. This missing component in the non-interactive version of the protocol allowed malicious provers to forge proofs.
 
 **Background**
 
@@ -677,7 +677,7 @@ The statement `0 = 2^255mod3` is false. But this statement will prove successful
 
 `3 * 2^255 + 0 = 2^255 (mod 2^256).`
 
-Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will succesfully be verified.
+Since the prover can prove these false modulo operations, they can convince the verifier of incorrect state updates that rely on these operations. The modulo operation is a basic building block of the zkEVM, so there are many possible incorrect state updates that a prover can make that will successfully be verified.
 
 **The Fix**
 
@@ -748,7 +748,7 @@ component main{public [val]} = Factors();
 
 This circuit is meant to prove that a prover knows two non identity factors (factors that don’t equal 1) of the public input *val*. The circuit is under-constrained because there is no constraint forcing the prover to use values other than 1 for *factorOne* or *factorTwo*. There is another missing constraint to ensure that *factorOne * factorTwo* is less than the scalar field order (See 3. Arithmetic Over/Under Flows for more details). 
 
-Under-constrained circuits attacks can very widely depending on the constraints that are missing. In some cases it can lead to significant consequences like allowing a user to repeatedly drain funds (see Bugs in the Wild 5. and 6.). In order to prevent these bugs, it is important to test the circuit with edge cases and manually review the logic in depth. Formal verification tools are almost production ready and will be able to catch a lot of common under-constrained bugs, such as [ECNE by 0xPARC](https://0xparc.org/blog/ecne) and [Veridise's circom-coq](https://reviewgithub.com/rep/Veridise/circom-coq). Additional tooling to catch these vulnerabilities is in the works as well.
+Under-constrained circuits attacks can vary widely depending on the constraints that are missing. In some cases it can lead to significant consequences like allowing a user to repeatedly drain funds (see Bugs in the Wild 5. and 6.). In order to prevent these bugs, it is important to test the circuit with edge cases and manually review the logic in depth. Formal verification tools are almost production ready and will be able to catch a lot of common under-constrained bugs, such as [ECNE by 0xPARC](https://0xparc.org/blog/ecne) and [Veridise's circom-coq](https://reviewgithub.com/rep/Veridise/circom-coq). Additional tooling to catch these vulnerabilities is in the works as well.
 
 ## <a name="nondeterministic-circuits">2. Nondeterministic Circuits</a>
 
@@ -960,7 +960,7 @@ These types of vulnerabilities have been named “Frozen Heart” vulnerabilitie
 
 Many zk protocols are first developed as interactive protocols, where the prover and verifier need to send messages in multiple rounds of communication. The verifier must send random numbers to the prover, that the prover is unable to predict. These are known as "challenges". The prover must then compute their components of the proof based on these challenges. This requirement for multiple rounds of communication would greatly limit these protocol's practicality. The most common way around this is to use the Fiat-Shamir transformation that supports what is known as the "random oracle model". Essentially, the prover can automatically get the challenges by hashing certain inputs of the proof instead of waiting on the verifier for the challenges. The hashes of the proof inputs acts as a random oracle. This allows the communication to happen within 1 round - the prover generates the proof and sends it to the verifier. The verifier then outputs accept or reject.
 
-As explained in the TrailOfBits’ explanation (linked in the references below), these bugs are widespread due to the general lack of guidance around implementing the Fiat-Shamir transfromation for different protocols. Often times the protocols are implemented directly from the academic paper that first introduced the protocol. However, these papers do not include all of the necessary details to be weary of when writing it in code. TrailOfBits’ suggested solution is to produce better implementation guidance for developers, which is why they created [ZKDocs](https://www.zkdocs.com/).
+As explained in the TrailOfBits’ explanation (linked in the references below), these bugs are widespread due to the general lack of guidance around implementing the Fiat-Shamir transformation for different protocols. Often times the protocols are implemented directly from the academic paper that first introduced the protocol. However, these papers do not include all of the necessary details to be weary of when writing it in code. TrailOfBits’ suggested solution is to produce better implementation guidance for developers, which is why they created [ZKDocs](https://www.zkdocs.com/).
 
 **References**
 
