@@ -987,7 +987,7 @@ A very common bug and misunderstanding is the difference between assignments and
 
 Assignments, on the other hand, simply assign a value to a variable during proof generation. Assignments do not have to be followed for a valid proof to be created. Often times, an assignment can be used, in combination with other constraints, to reduce the total number of constraints used. 
 
-Constrains actually add equations to the R1CS file whereas assignments do not. 
+Constraints actually add equations to the R1CS file whereas assignments do not.
 
 **Circom Case and Example**
 
