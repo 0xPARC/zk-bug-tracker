@@ -756,6 +756,8 @@ Nondeterministic circuits are a subset of under-constrained circuits, usually be
 
 Nullifiers are often used in with zk applications to prevent double actions. For example, TornadoCash requires a nullifier to be generated and posted on-chain when a note commitment is spent. That way, if the user tries to spend the same note commitment a second time, they will have to post the same nullifier on-chain. Since the nullifier already exists, the smart contract will revert this second spend. The smart contract relies on a valid zk proof to ensure that the nullifier was generated correctly.
 
+Note: Not all nondeterminstic circuits are vulnerable to attacks. In some cases, nondeterminism can allow for an optimized circuit while remaining secure. For example, the [circom-pairing library](https://github.com/yi-sun/circom-pairing/blob/master/docs/README.md#fp-element) represents field elements as integers A such that `0 <= A < p`, but only constrains `0 <= A`. So the `A < p` constraint is left out except for circuits that require it. In the cases where that constraint is not required, overflows will not break the assumptions of the circuit. However, it is still important to be aware of this possibility.
+
 **Attack Scenario**
 
 In a nondeterministic circuit for proving correct nullifier generation, there are multiple ways to generate a nullifier for the same note commitment. Each nullifier will be unique and posting the nullifier on-chain won’t prevent a double spend. The nondeterministic nature of the nullifier generation process allows users to spend a single note commitment multiple times.
