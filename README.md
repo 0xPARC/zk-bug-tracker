@@ -19,14 +19,15 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  4. [Semaphore: Missing Smart Contract Range Check](#semaphore-1)
  5. [Zk-Kit: Missing Smart Contract Range Check](#zk-kit-1)
  6. [Aztec 2.0: Missing Bit Length Check / Nondeterministic Nullifier](#aztec-1)
- 7. [0xPARC StealthDrop: Nondeterministic Nullifier](#stealthdrop-1)
- 8. [MACI 1.0: Under-constrained Circuit](#maci-1)
- 9. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
- 10. [PlonK: Frozen Heart](#plonk-1)
- 11. [Zcash: Trusted Setup Leak](#zcash-1)
- 12. [MiMC Hash: Assigned but not Constrained](#mimc-1)
- 13. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
- 14. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
+ 7. [Aztec Plonk Verifier: 0 Bug](#aztec-2)
+ 8. [0xPARC StealthDrop: Nondeterministic Nullifier](#stealthdrop-1)
+ 9. [MACI 1.0: Under-constrained Circuit](#maci-1)
+ 10. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
+ 11. [PlonK: Frozen Heart](#plonk-1)
+ 12. [Zcash: Trusted Setup Leak](#zcash-1)
+ 13. [MiMC Hash: Assigned but not Constrained](#mimc-1)
+ 14. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
+ 15. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
  
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -412,7 +413,40 @@ A bit length check was needed on the given note commitment index to enforce that
 
 1. [Aztec Bug Disclosure](https://hackmd.io/@aztec-network/disclosure-of-recent-vulnerabilities)
 
-## <a name="stealthdrop-1">7. 0xPARC StealthDrop: Nondeterministic Nullifier</a>
+## <a name="aztec-2">7. Aztec Plonk Verifier: 0 Bug</a>
+
+**Summary**
+
+Related Vulnerabilities: Missing Curve Point Checks
+
+Identified By: [Nguyen Thoi Minh Quan](https://github.com/cryptosubtlety)
+
+The Aztec Plonk verifier, written in C++, accepts proofs containing multiple elements as per the Plonk protocol. However, by manually setting two of the elements to 0, the verifier will automatically accept that proof regardless of the other elements. This allows an attacker to successfully forge a proof.
+
+**Background**
+
+The full description of this bug is quite math heavy and dives deep into the Plonk protocol. The finder of this bug, Nguyen Thoi Minh Quan, has a great detailed description of the bug [here](https://github.com/cryptosubtlety/00/blob/main/00.pdf). 
+
+Elliptic curves have what is known as a point at infinity. Let `O = point at infinity` and `P` be any point on the curve. Then `O + P = P`. When implementing a cryptographic protocol in code, there are different ways to express the point at inifinity. For example, sometimes the number `0` is considered the point at infinity, but other times `0` is considered as the point `(0, 0)`, which is not the point at infinity. This will be important later.
+
+Plonk proofs require a group of elements and curve points, and then will check whether these elements and points satisfy certain equations. One of the main equations to check is an elliptic curve pairing. The curve points that are of importance for this bug are [W<sub>z</sub>]<sub>1</sub> and [W<sub>zw</sub>]<sub>1</sub>.
+
+**The Vulnerability**
+
+When [W<sub>z</sub>]<sub>1</sub> and [W<sub>zw</sub>]<sub>1</sub> are checked in the verifier code, a value of `0` is recognized as not on the elliptic curve, but the code does not fail immediately. The verifier continues on and later recognizes the `0` value as the point at infinity. This causes the pairing equation to be satisfied, and therefore the proof is successfully verified. 
+
+**The Fix**
+
+The verifier was missing checks at a few different spots in the code. Just one of these checks would stop the 0 bug from working. These checks are explained in more detail in the finder's description. A simple to understand fix would be to agree on a consistent representation of the point at infinity. If `0` was consistently decided as not the point at infinity, then this bug would not work. 
+
+This bug is a good example of how implementing a secure cryptographic protocol can become insecure very easily. If one follows the Plonk paper exactly, this bug is not possible. This is a good reminder to test a protocol with inputs that theoretically would never work, as this finder did. 
+
+**References**
+
+1. [Nguyen Thoi Minh Quan's Description](https://github.com/cryptosubtlety/00/blob/main/00.pdf)
+
+
+## <a name="stealthdrop-1">8. 0xPARC StealthDrop: Nondeterministic Nullifier</a>
 
 **Summary**
 
@@ -438,7 +472,7 @@ Instead of only constraining signature validation in the SNARK circuit, constrai
 
 1. [0xPARC Twitter Thread Explanation](https://twitter.com/0xPARC/status/1493705025385906179)
 
-## <a name="maci-1">8. MACI 1.0: Under-constrained Circuit</a>
+## <a name="maci-1">9. MACI 1.0: Under-constrained Circuit</a>
 
 **Summary**
 
@@ -489,7 +523,7 @@ This check ensures that the vote message is applied to the intended public key (
 
 1. [Issue on Github](https://github.com/privacy-scaling-explorations/maci/issues/320)
 
-## <a name="bulletproofs-1">9. Bulletproofs Paper: Frozen Heart</a>
+## <a name="bulletproofs-1">10. Bulletproofs Paper: Frozen Heart</a>
 
 **Summary**
 
@@ -531,7 +565,7 @@ In order to prevent this Frozen Heart vulnerability, the Pedersen commitment sho
 
 1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/15/the-frozen-heart-vulnerability-in-bulletproofs/)
 
-## <a name="plonk-1">10. PlonK: Frozen Heart</a>
+## <a name="plonk-1">11. PlonK: Frozen Heart</a>
 
 **Summary**
 
@@ -559,7 +593,7 @@ The fix for these vulnerabilities differs for each implementation affected, but 
 
 1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/18/the-frozen-heart-vulnerability-in-plonk/)
 
-## <a name="zcash-1">11. Zcash: Trusted Setup Leak</a>
+## <a name="zcash-1">12. Zcash: Trusted Setup Leak</a>
 
 **Summary**
 
@@ -587,7 +621,7 @@ Since the toxic parameters were visible on the trusted setup ceremony document, 
 2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
 3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
 
-## <a name="mimc-1">12. MiMC Hash: Assigned but not Constrained</a>
+## <a name="mimc-1">13. MiMC Hash: Assigned but not Constrained</a>
 
 **Summary**
 
@@ -625,7 +659,7 @@ outs[0] <== S[nInputs - 1].xL_out;
 1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
 2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
 
-## <a name="zkevm-1">13. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
+## <a name="zkevm-1">14. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
 
 **Summary**
 
@@ -688,7 +722,7 @@ The fix for this issue is to add another constraint forcing `k * n + r` to be le
 1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
 2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
 
-## <a name="zkevm-2">14. PSE & Scroll zkEVM: Missing Constraint</a>
+## <a name="zkevm-2">15. PSE & Scroll zkEVM: Missing Constraint</a>
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
 
