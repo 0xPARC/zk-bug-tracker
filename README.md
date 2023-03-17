@@ -1,10 +1,10 @@
 # ZK Bug Tracker
-A community-maintained collection of bugs, vulnerabilities, and exploits in apps using ZK crypto. 
+A community-maintained collection of bugs, vulnerabilities, and exploits in apps using ZK crypto.
 
-There are two sections - *Bugs in the Wild* and *Common Vulnerabilities*. 
-The *Bugs in the Wild section* is a list of actual bugs found in zk related codebases. 
-The *Common Vulnerabilities* section outlines the common categories of zk related bugs that have been found. 
-These lists can be used as a reference for developers, auditors, and security tool makers. 
+There are two sections - *Bugs in the Wild* and *Common Vulnerabilities*.
+The *Bugs in the Wild section* is a list of actual bugs found in zk related codebases.
+The *Common Vulnerabilities* section outlines the common categories of zk related bugs that have been found.
+These lists can be used as a reference for developers, auditors, and security tool makers.
 
 #### Contributing
 If you would like to add a "bug in the wild" or a "common vulnerability", there are two ways to do so:
@@ -28,7 +28,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  13. [MiMC Hash: Assigned but not Constrained](#mimc-1)
  14. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
  15. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
- 
+
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
  2. [Nondeterministic Circuits](#nondeterministic-circuits)
@@ -40,7 +40,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  8. [Assigned but not Constrained](#assigned-not-constrained)
 
 #### [Zk Security Resources](#zk-security-resources-header)
- 
+
 
 # <a name="bugs-in-the-wild-header">Bugs in the Wild</a>
 
@@ -61,17 +61,17 @@ Dark Forest, a fully decentralized and real time strategy game, had a missing bi
 ```jsx
 // From darkforest-v0.3/circuits/range_proof/circuit.circom
 template RangeProof(bits, max_abs_value) {
-    signal input in; 
+    signal input in;
 
     component lowerBound = LessThan(bits);
     component upperBound = LessThan(bits);
 
-    lowerBound.in[0] <== max_abs_value + in; 
+    lowerBound.in[0] <== max_abs_value + in;
     lowerBound.in[1] <== 0;
     lowerBound.out === 0
 
     upperBound.in[0] <== 2 * max_abs_value;
-    upperBound.in[1] <== max_abs_value + in; 
+    upperBound.in[1] <== max_abs_value + in;
     upperBound.out === 0
 }
 ```
@@ -79,7 +79,7 @@ template RangeProof(bits, max_abs_value) {
  The *LessThan* template compares two inputs, and outputs 1 if the first input is less than the second input. In the *RangeProof* circuit, the *LessThan* circuit is essentially used as a GreaterEqThan, requiring that the output is 0. The *LessThan* template takes in the max number of bits for both inputs as a parameter, but does not actually check this constraint.
 
 ```jsx
-// From circomlib/circuits/comparators.circom 
+// From circomlib/circuits/comparators.circom
 template LessThan(n) {
     assert(n <= 252);
     signal input in[2];
@@ -109,7 +109,7 @@ In order to prevent this attack, a check was needed on the number of bits of *ma
 // output: none
 // also checks that both max and abs(in) are expressible in `bits` bits
 template RangeProof(bits) {
-    signal input in; 
+    signal input in;
     signal input max_abs_value;
 
     /* check that both max and abs(in) are expressible in `bits` bits  */
@@ -122,12 +122,12 @@ template RangeProof(bits) {
     component lowerBound = LessThan(bits+1);
     component upperBound = LessThan(bits+1);
 
-    lowerBound.in[0] <== max_abs_value + in; 
+    lowerBound.in[0] <== max_abs_value + in;
     lowerBound.in[1] <== 0;
     lowerBound.out === 0
 
     upperBound.in[0] <== 2 * max_abs_value;
-    upperBound.in[1] <== max_abs_value + in; 
+    upperBound.in[1] <== max_abs_value + in;
     upperBound.out === 0
 }
 ```
@@ -219,7 +219,7 @@ Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circ
 
 Identified By: [Veridise Team](https://veridise.com/)
 
-The Circom-Pairing circuits, written in circom, are used for the [Succinct Labs'](https://succinct.xyz/) bridge that is based on cryptographic protocols. However, the circuits were missing a constraint to ensure proper range checks. 
+The Circom-Pairing circuits, written in circom, are used for the [Succinct Labs'](https://succinct.xyz/) bridge that is based on cryptographic protocols. However, the circuits were missing a constraint to ensure proper range checks.
 
 **Background**
 
@@ -244,7 +244,7 @@ The vulnerability arose in the `CoreVerifyPubkeyG1` circuit:
 template CoreVerifyPubkeyG1(n, k){
   ...
   var q[50] = get_BLS12_381_prime(n, k);
-  
+
   component lt[10];
   // check all len k input arrays are correctly formatted bigints < q (BigLessThan calls Num2Bits)
   for(var i=0; i<10; i++){
@@ -287,7 +287,7 @@ Related Vulnerabilities: 3. Arithmetic Over/Under Flows
 
 Identified By: [PSE Security Team](https://twitter.com/PrivacyScaling)
 
-The Semaphore smart contracts performed range checks in some places but not others. The range checks were to ensure that all public inputs were less than the snark scalar field order. However, these checks weren’t enforced in all the necessary places. This could cause new Semaphore group owners to unknowingly create a group that will always fail verification. 
+The Semaphore smart contracts performed range checks in some places but not others. The range checks were to ensure that all public inputs were less than the snark scalar field order. However, these checks weren’t enforced in all the necessary places. This could cause new Semaphore group owners to unknowingly create a group that will always fail verification.
 
 **Background**
 
@@ -425,7 +425,7 @@ The Aztec Plonk verifier, written in C++, accepts proofs containing multiple ele
 
 **Background**
 
-The full description of this bug is quite math heavy and dives deep into the Plonk protocol. The finder of this bug, Nguyen Thoi Minh Quan, has a great detailed description of the bug [here](https://github.com/cryptosubtlety/00/blob/main/00.pdf). 
+The full description of this bug is quite math heavy and dives deep into the Plonk protocol. The finder of this bug, Nguyen Thoi Minh Quan, has a great detailed description of the bug [here](https://github.com/cryptosubtlety/00/blob/main/00.pdf).
 
 Elliptic curves have what is known as a point at infinity. Let `O = point at infinity` and `P` be any point on the curve. Then `O + P = P`. When implementing a cryptographic protocol in code, there are different ways to express the point at inifinity. For example, sometimes the number `0` is considered the point at infinity, but other times `0` is considered as the point `(0, 0)`, which is not the point at infinity. This will be important later.
 
@@ -433,13 +433,13 @@ Plonk proofs require a group of elements and curve points, and then will check w
 
 **The Vulnerability**
 
-When [W<sub>z</sub>]<sub>1</sub> and [W<sub>zw</sub>]<sub>1</sub> are checked in the verifier code, a value of `0` is recognized as not on the elliptic curve, but the code does not fail immediately. The verifier continues on and later recognizes the `0` value as the point at infinity. This causes the pairing equation to be satisfied, and therefore the proof is successfully verified. 
+When [W<sub>z</sub>]<sub>1</sub> and [W<sub>zw</sub>]<sub>1</sub> are checked in the verifier code, a value of `0` is recognized as not on the elliptic curve, but the code does not fail immediately. The verifier continues on and later recognizes the `0` value as the point at infinity. This causes the pairing equation to be satisfied, and therefore the proof is successfully verified.
 
 **The Fix**
 
-The verifier was missing checks at a few different spots in the code. Just one of these checks would stop the 0 bug from working. These checks are explained in more detail in the finder's description. A simple to understand fix would be to agree on a consistent representation of the point at infinity. If `0` was consistently decided as not the point at infinity, then this bug would not work. 
+The verifier was missing checks at a few different spots in the code. Just one of these checks would stop the 0 bug from working. These checks are explained in more detail in the finder's description. A simple to understand fix would be to agree on a consistent representation of the point at infinity. If `0` was consistently decided as not the point at infinity, then this bug would not work.
 
-This bug is a good example of how implementing a secure cryptographic protocol can become insecure very easily. If one follows the Plonk paper exactly, this bug is not possible. This is a good reminder to test a protocol with inputs that theoretically would never work, as this finder did. 
+This bug is a good example of how implementing a secure cryptographic protocol can become insecure very easily. If one follows the Plonk paper exactly, this bug is not possible. This is a good reminder to test a protocol with inputs that theoretically would never work, as this finder did.
 
 **References**
 
@@ -502,7 +502,7 @@ In MACI, a valid vote message can be used to change a user’s public key. From 
 
 **The Vulnerability**
 
-The *currentStateLeaf* array is ordered by the coordinator. Therefore, the coordinator effectively has control over which public key a new vote message is applied to. Therefore, they can choose to apply a vote message from one user, to another user’s public key. This will cause that vote message to be considered invalid since it doesn’t match the public key. 
+The *currentStateLeaf* array is ordered by the coordinator. Therefore, the coordinator effectively has control over which public key a new vote message is applied to. Therefore, they can choose to apply a vote message from one user, to another user’s public key. This will cause that vote message to be considered invalid since it doesn’t match the public key.
 
 There is a constraint ensuring that a message’s *stateIndex* matches the public key it was applied on, but this constraint only marks a vote message as invalid if so. Before the *stateIndex* is checked, the circuit checks other cases where the message may be invalid, such as if the public key matches this new vote message. If it gets marked as invalid, the *stateIndex* check won’t make any changes. This circuit is under-constrained.
 
@@ -605,7 +605,7 @@ The Zcash zero-knowledge proofs are based on a modified version of the Pinocchio
 
 **Background**
 
-For zero-knowledge protocols such as Pinocchio and Groth16, a trusted setup is required. The trusted setup is a way to generate the proper parameters needed so that the prover can generate a proof, and the verifier can properly verify it. The trusted setup process usually involves parameters that must be kept secret, otherwise malicious provers can forge proofs. These parameters are known as “toxic waste” and kept private through the use of multi-party computation. Therefore, it’s very important the trusted set-up process generates the correct parameters and keeps the toxic waste hidden. 
+For zero-knowledge protocols such as Pinocchio and Groth16, a trusted setup is required. The trusted setup is a way to generate the proper parameters needed so that the prover can generate a proof, and the verifier can properly verify it. The trusted setup process usually involves parameters that must be kept secret, otherwise malicious provers can forge proofs. These parameters are known as “toxic waste” and kept private through the use of multi-party computation. Therefore, it’s very important the trusted set-up process generates the correct parameters and keeps the toxic waste hidden.
 
 **The Vulnerability**
 
@@ -643,7 +643,7 @@ During a computation step for this circuit, the `=` operator was used instead of
 outs[0] = S[nInputs - 1].xL_out;
 ```
 
-The `=` operator assigned `S[nInputs - 1].xL_out` to `outs[0]`, but did not actually constrain it. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs. 
+The `=` operator assigned `S[nInputs - 1].xL_out` to `outs[0]`, but did not actually constrain it. An attacker could then manipulate outs[0] when creating their own proof to manipulate the final output MiMC hash. Essentially, an attacker can change the MiMC hash output for a given set of inputs.
 
 Since this hash function was used in the TornadoCash circuits, this would allow the attacker to fake a merkle root and withdraw someone else's ETH from the contract.
 
@@ -780,7 +780,7 @@ template NonIdentityFactors() {
 component main{public [val]} = Factors();
 ```
 
-This circuit is meant to prove that a prover knows two non identity factors (factors that don’t equal 1) of the public input *val*. The circuit is under-constrained because there is no constraint forcing the prover to use values other than 1 for *factorOne* or *factorTwo*. There is another missing constraint to ensure that *factorOne * factorTwo* is less than the scalar field order (See 3. Arithmetic Over/Under Flows for more details). 
+This circuit is meant to prove that a prover knows two non identity factors (factors that don’t equal 1) of the public input *val*. The circuit is under-constrained because there is no constraint forcing the prover to use values other than 1 for *factorOne* or *factorTwo*. There is another missing constraint to ensure that *factorOne * factorTwo* is less than the scalar field order (See 3. Arithmetic Over/Under Flows for more details).
 
 Under-constrained circuits attacks can vary widely depending on the constraints that are missing. In some cases it can lead to significant consequences like allowing a user to repeatedly drain funds (see Bugs in the Wild 5. and 6.). In order to prevent these bugs, it is important to test the circuit with edge cases and manually review the logic in depth. Formal verification tools are almost production ready and will be able to catch a lot of common under-constrained bugs, such as [ECNE by 0xPARC](https://0xparc.org/blog/ecne) and [Veridise's circom-coq](https://reviewgithub.com/rep/Veridise/circom-coq). Additional tooling to catch these vulnerabilities is in the works as well.
 
@@ -820,34 +820,44 @@ This can cause unintended consequences if there are no checks preventing these p
 
 **Attack Scenario**
 
-For example, let’s assume there is a circuit that outputs a user’s new balance as the public output:
+For example, consider the following circuit that computes a user’s new balance:
 
 ```jsx
 template getNewBalance() {
-	signal currBal;
-	signal withdrawAmt;
-	signal output newBal;
+   signal input currentBalance;
+   signal input withdrawAmount;
+   signal output newBalance;
 
-	newBal <== currBal - withdrawAmt;
+   newBalance <== currentBalance - withdrawAmount;
 }
 ```
 
-If a user inputs a currBal < withdrawAmt, the newBal output will underflow and will be an extremely large number close to p. This is clearly not what is intended by the circuit.
+If a user inputs a `withdrawAmount` that is greater than their `currentBalance`, the `newBalance` output will underflow and will be an extremely large number close to `p`. This is clearly not what was intended by the circuit writer.
 
-**Preventative Techniques**
+**The fix**
 
-Adding range checks via the circomlib/comparators library can ensure the numbers we are working with are not within bounds of causing over/under flows:
+We can use the `LessThan` and `Num2Bits` templates defined by Circomlib to ensure the values we are working with are within the correct bounds, and will not cause overflows or underflows:
 
 ```jsx
-component lt = LessThan(252);
-lt.in[0] = withdrawAmt;
-lt.in[1] = currBal;
+// Ensure that both values are positive.
+component n2b1 = Num2Bits(64);
+n2b1.in <== withdrawAmount;
+
+component n2b2 = Num2Bits(64);
+n2b2.in <== currentBalance;
+
+// Ensure that withdrawAmount <= currentBalance.
+component lt = LessThan(64);
+lt.in[0] = withdrawAmount;
+lt.in[1] = currentBalance + 1;
 lt.out === 1;
 ```
 
+Here, `Num2Bits(n)` is used as a range check to ensure that the input lies in the interval `[0, 2^n)`. In particular, if `n` is small enough this ensures that the input is positive. If we forgot these range checks a malicious user could input a `withdrawAmount` equal to `p - 1`. This would satisfy the constraints defined by `LessThan` as long as the current balance is non-negative since `p - 1 = -1 < currentBalance`.
+
 ## <a name="mismatching-bit-lengths">4. Mismatching Bit Lengths</a>
 
-Many of CircomLib’s circuits take in an expected number of bits. In order for their constraints and output to be accurate, the input parameters need to be constrained to that maximum number of bits outside of the CircomLib circuit. For example, the *LessThan* circuit expects *n* number of bits. 
+Many of CircomLib’s circuits take in an expected number of bits. In order for their constraints and output to be accurate, the input parameters need to be constrained to that maximum number of bits outside of the CircomLib circuit. For example, the *LessThan* circuit expects *n* number of bits.
 
 ```jsx
 template LessThan(n) {
@@ -865,8 +875,8 @@ template LessThan(n) {
 
 **Attack Scenario**
 
-The *LessThan* circuit outputs 1 if *in[0] < in[1]*, and 0 otherwise. An attacker could use *in[0]* as a small number 
-and *in[1]* as a number with more than *n* bits. This would cause the *Num2Bits* input to underflow, and so the output 
+The *LessThan* circuit outputs 1 if *in[0] < in[1]*, and 0 otherwise. An attacker could use *in[0]* as a small number
+and *in[1]* as a number with more than *n* bits. This would cause the *Num2Bits* input to underflow, and so the output
 could be engineered to 0, even though *in[0] < in[1]*.
 
 **Preventative Techniques**
@@ -897,7 +907,7 @@ lt.out === 1;
 
 ## <a name="unused-pub-inputs">5. Unused Public Inputs Optimized Out</a>
 
-Many circuits will have a variable as a public input, but won’t write any constraints on that variable. These public inputs without any constraints can act as key information when verifying the proof. However, as of Circom 2.0, the default r1cs compilation uses an optimizer. The optimizer will optimize these public inputs out of the circuit if they are not involved in any constraints. 
+Many circuits will have a variable as a public input, but won’t write any constraints on that variable. These public inputs without any constraints can act as key information when verifying the proof. However, as of Circom 2.0, the default r1cs compilation uses an optimizer. The optimizer will optimize these public inputs out of the circuit if they are not involved in any constraints.
 
 ```jsx
 component UnusedPubInput() {
@@ -1004,9 +1014,9 @@ As explained in the TrailOfBits’ explanation (linked in the references below),
 
 ## <a name="trusted-setup-leak">7. Trusted Setup Leak</a>
 
-Many popular zk protocols require what is known as a trusted setup. The trusted setup is used to generate the parameters necessary for a prover to create sound zk proofs. However, the setup also involves parameters that need to be hidden to everyone. These are known as "toxic waste". If the toxic waste is revealed to a party, then they would be able to forge zk proofs for that system. The toxic waste is usually kept private in practice through the use of multi-party computation. 
+Many popular zk protocols require what is known as a trusted setup. The trusted setup is used to generate the parameters necessary for a prover to create sound zk proofs. However, the setup also involves parameters that need to be hidden to everyone. These are known as "toxic waste". If the toxic waste is revealed to a party, then they would be able to forge zk proofs for that system. The toxic waste is usually kept private in practice through the use of multi-party computation.
 
-Older zk protocols such as Pinocchio and Groth16 require a new trusted setup for each unique circuit. This creates problems whenever a project needs to update their circuits because then they would need to redo the trusted setup. Newer protocols such as MARLIN and PLONK still require a trusted setup, but only once. These protocols' setup is known as "universal" since it can be used for multiple programs, making upgrades much easier. Other protocols such as Bulletproofs and STARKs do not require trusted setups at all. 
+Older zk protocols such as Pinocchio and Groth16 require a new trusted setup for each unique circuit. This creates problems whenever a project needs to update their circuits because then they would need to redo the trusted setup. Newer protocols such as MARLIN and PLONK still require a trusted setup, but only once. These protocols' setup is known as "universal" since it can be used for multiple programs, making upgrades much easier. Other protocols such as Bulletproofs and STARKs do not require trusted setups at all.
 
 See the references below for more details on toxic waste and how trusted setups work.
 
@@ -1021,7 +1031,7 @@ See the references below for more details on toxic waste and how trusted setups 
 
 A very common bug and misunderstanding is the difference between assignments and constraints. For zk circuits, constraints are the mathematical equations that must be satisfied by any given inputs for a proof to be valid. If any of the inputs result in one of the constraint equations to be incorrect, a valid proof is not possible (well, extremely unlikely).
 
-Assignments, on the other hand, simply assign a value to a variable during proof generation. Assignments do not have to be followed for a valid proof to be created. Often times, an assignment can be used, in combination with other constraints, to reduce the total number of constraints used. 
+Assignments, on the other hand, simply assign a value to a variable during proof generation. Assignments do not have to be followed for a valid proof to be created. Often times, an assignment can be used, in combination with other constraints, to reduce the total number of constraints used.
 
 Constraints actually add equations to the R1CS file whereas assignments do not.
 
@@ -1055,8 +1065,8 @@ template IsZero() {
     signal in;
     signal out;
     signal temp;
-    temp <-- in!= 0 ? 0 : 1; 
-    out === temp; 
+    temp <-- in!= 0 ? 0 : 1;
+    out === temp;
 }
 ```
 
@@ -1066,7 +1076,7 @@ Another good question is why don't we constrain instead of assign: `inv <== in!=
 
 **Halo2 Case**
 
-This type of bug can easily happen with Halo2 circuits as well - maybe even more likely because assigning is done separately from constraints. In Halo2, often times the constraints are created in a `configure` function, while the assignments are done in an `assign` function. It is easy for developers to see that the circuit is satisfied because the `assign` function correctly gives the desired inputs. However, if the `configure` function is missing a constraint, a malicious prover can fork the code and change the `assign` function to target the missing constraint. 
+This type of bug can easily happen with Halo2 circuits as well - maybe even more likely because assigning is done separately from constraints. In Halo2, often times the constraints are created in a `configure` function, while the assignments are done in an `assign` function. It is easy for developers to see that the circuit is satisfied because the `assign` function correctly gives the desired inputs. However, if the `configure` function is missing a constraint, a malicious prover can fork the code and change the `assign` function to target the missing constraint.
 
 A good example of this bug is from the SHL and SHR opcode circuit for the PSE zkEVM. The opcode circuit takes as input a `shift` variable and a `shf0` variable:
 
@@ -1083,11 +1093,11 @@ let shf0 = pop1.to_le_bytes()[0];
 self.shift.assign(region, offset, Some(pop1.to_le_bytes()))?;
 ```
 
-The fix was to add a constraint forcing `shf0` to equal the first byte of `shift`. 
+The fix was to add a constraint forcing `shf0` to equal the first byte of `shift`.
 
 **Preventative Techniques**
 
-To prevent these types of bugs, it is important to understand the ins and outs of whatever coding language was used to create the circuits. That way one can quickly identify what's constrained and what's assigned. Additionally, it is extremely important to go over each constraint in detail to ensure that the system is constrained to the exact expected behavior. Do not consider assignments when doing this, only the constraints. A great way to ensure your constraints are sufficient is through [formal verification](https://en.wikipedia.org/wiki/Formal_verification). Some tools are currently in the process that will help enable quick formal verification for circom and halo2 circuits. 
+To prevent these types of bugs, it is important to understand the ins and outs of whatever coding language was used to create the circuits. That way one can quickly identify what's constrained and what's assigned. Additionally, it is extremely important to go over each constraint in detail to ensure that the system is constrained to the exact expected behavior. Do not consider assignments when doing this, only the constraints. A great way to ensure your constraints are sufficient is through [formal verification](https://en.wikipedia.org/wiki/Formal_verification). Some tools are currently in the process that will help enable quick formal verification for circom and halo2 circuits.
 
 **References**
 1. [Circom Documentation](https://docs.circom.io/circom-language/signals/)
