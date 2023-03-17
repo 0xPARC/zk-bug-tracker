@@ -839,14 +839,14 @@ If a user inputs a `withdrawAmount` that is greater than their `currentBalance`,
 We can use the `LessThan` and `Num2Bits` templates defined by Circomlib to ensure the values we are working with are within the correct bounds, and will not cause overflows or underflows:
 
 ```jsx
-# Ensure that both values are positive.
+// Ensure that both values are positive.
 component n2b1 = Num2Bits(64);
 n2b1.in <== withdrawAmount;
 
 component n2b2 = Num2Bits(64);
 n2b2.in <== currentBalance;
 
-# Ensure that withdrawAmount <= currentBalance.
+// Ensure that withdrawAmount <= currentBalance.
 component lt = LessThan(64);
 lt.in[0] = withdrawAmount;
 lt.in[1] = currentBalance + 1;
