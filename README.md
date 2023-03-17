@@ -824,11 +824,11 @@ For example, consider the following circuit that computes a user’s new balance
 
 ```jsx
 template getNewBalance() {
-	signal currentBalance;
-	signal withdrawAmount;
-	signal output newBalance;
+   signal currentBalance;
+   signal withdrawAmount;
+   signal output newBalance;
 
-	newBalance <== currentBalance - withdrawAmount;
+   newBalance <== currentBalance - withdrawAmount;
 }
 ```
 
