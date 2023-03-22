@@ -21,13 +21,14 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  6. [Aztec 2.0: Missing Bit Length Check / Nondeterministic Nullifier](#aztec-1)
  7. [Aztec Plonk Verifier: 0 Bug](#aztec-2)
  8. [0xPARC StealthDrop: Nondeterministic Nullifier](#stealthdrop-1)
- 9. [MACI 1.0: Under-constrained Circuit](#maci-1)
- 10. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
- 11. [PlonK: Frozen Heart](#plonk-1)
- 12. [Zcash: Trusted Setup Leak](#zcash-1)
- 13. [MiMC Hash: Assigned but not Constrained](#mimc-1)
- 14. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
- 15. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
+ 9. [a16z ZkDrops: Missing Nullifier Range Check](#zkdrops-1)
+ 10. [MACI 1.0: Under-constrained Circuit](#maci-1)
+ 11. [Bulletproofs Paper: Frozen Heart](#bulletproofs-1)
+ 12. [PlonK: Frozen Heart](#plonk-1)
+ 13. [Zcash: Trusted Setup Leak](#zcash-1)
+ 14. [MiMC Hash: Assigned but not Constrained](#mimc-1)
+ 15. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
+ 16. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -472,7 +473,56 @@ Instead of only constraining signature validation in the SNARK circuit, constrai
 
 1. [0xPARC Twitter Thread Explanation](https://twitter.com/0xPARC/status/1493705025385906179)
 
-## <a name="maci-1">9. MACI 1.0: Under-constrained Circuit</a>
+## <a name="zkdrops-1">9. a16z ZkDrops: Missing Nullifier Range Check</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 3. Arithmetic Over/Under Flows
+
+Identified By: [Kobi Gurkan](https://github.com/kobigurk)
+
+ZkDrops is very similar to the 0xPARC StealthDrop (related bug just above). ZkDrops requires that users post a nullifier on-chain when they claim an airdrop. If they try to claim the airdrop twice, the second claim will fail because the nullifier has already been seen by the smart contract. However, since the EVM allows numbers (256 bits) larger than the snark scalar field order, arithmetic overflows allowed users to submit different nullifiers for the same airdrop claim. This made it possible for a user to claim a single airdrop multiple times.
+
+**Background**
+
+In order to claim an airdrop, users must post a nullifier on-chain. If the nullifier is already present on-chain, the airdrop will fail. The nullifier is supposed to be computed in a deterministic way such that given the same input parameters (the user’s claim in this case), the output nullifier will always be the same. The nullifier is stored on-chain as a 256 bit unsigned integer. 
+
+Since the SNARK scalar field is 254 bits, a nullifier that is `> 254 bits` will be reduced modulo the SNARK field during the proof generation process. For example, let `p = SNARK scalar field order`. Then any number `x` in the proof generation process will be reduced to `x % p`. So `p + 1` will be reduced to `1`.
+
+**The Vulnerability**
+
+The smart contract that checked whether a nullifier has been seen before or not, did not verify whether the nullifier was within the SNARK scalar field. So, if a user has a nullifier `x >= p`, then they could use both `x and x % p` as separate nullifiers. These both will be evaluated to `x % p` within the circuit, so both would generate a successful proof. When the user first claims an airdrop with the `x` nullifier, `x` hasn't been seen before so it is successful. Then when the user claims the same airdrop with `x % p`, that value hasn't been seen by the contract before either, so it is successful as well. The user has now claimed the airdrop twice.
+
+**The Fix**
+
+The fix to this issue is to add a range check in the smart contract. This range check should ensure that all nullifiers are within the SNARK scalar field so that no duplicate nullifiers satisfy the circuit. The following function to claim an airdrop:
+
+```jsx
+/// @notice verifies the proof, collects the airdrop if valid, and prevents this proof from working again.
+function collectAirdrop(bytes calldata proof, bytes32 nullifierHash) public {
+	require(!nullifierSpent[nullifierHash], "Airdrop already redeemed");
+
+	uint[] memory pubSignals = new uint[](3);
+	pubSignals[0] = uint256(root);
+	pubSignals[1] = uint256(nullifierHash);
+	pubSignals[2] = uint256(uint160(msg.sender));
+	require(verifier.verifyProof(proof, pubSignals), "Proof verification failed");
+	nullifierSpent[nullifierHash] = true;
+	airdropToken.transfer(msg.sender, amountPerRedemption);
+}
+```
+
+Was fixed by adding this range check:
+
+```jsx
+require(uint256(nullifierHash) < SNARK_FIELD ,"Nullifier is not within the field");
+```
+
+**References**
+
+1. [Github PR](https://github.com/a16z/zkdrops/pull/2)
+
+## <a name="maci-1">10. MACI 1.0: Under-constrained Circuit</a>
 
 **Summary**
 
@@ -523,7 +573,7 @@ This check ensures that the vote message is applied to the intended public key (
 
 1. [Issue on Github](https://github.com/privacy-scaling-explorations/maci/issues/320)
 
-## <a name="bulletproofs-1">10. Bulletproofs Paper: Frozen Heart</a>
+## <a name="bulletproofs-1">11. Bulletproofs Paper: Frozen Heart</a>
 
 **Summary**
 
@@ -565,7 +615,7 @@ In order to prevent this Frozen Heart vulnerability, the Pedersen commitment sho
 
 1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/15/the-frozen-heart-vulnerability-in-bulletproofs/)
 
-## <a name="plonk-1">11. PlonK: Frozen Heart</a>
+## <a name="plonk-1">12. PlonK: Frozen Heart</a>
 
 **Summary**
 
@@ -593,7 +643,7 @@ The fix for these vulnerabilities differs for each implementation affected, but 
 
 1. [TrailOfBits Explanation](https://blog.trailofbits.com/2022/04/18/the-frozen-heart-vulnerability-in-plonk/)
 
-## <a name="zcash-1">12. Zcash: Trusted Setup Leak</a>
+## <a name="zcash-1">13. Zcash: Trusted Setup Leak</a>
 
 **Summary**
 
@@ -621,7 +671,7 @@ Since the toxic parameters were visible on the trusted setup ceremony document, 
 2. [Pinocchio Protocol](https://eprint.iacr.org/2013/279)
 3. [Zcash’s Modified Pinocchio Protocol](https://eprint.iacr.org/2013/879)
 
-## <a name="mimc-1">13. MiMC Hash: Assigned but not Constrained</a>
+## <a name="mimc-1">14. MiMC Hash: Assigned but not Constrained</a>
 
 **Summary**
 
@@ -659,7 +709,7 @@ outs[0] <== S[nInputs - 1].xL_out;
 1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
 2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
 
-## <a name="zkevm-1">14. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
+## <a name="zkevm-1">15. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
 
 **Summary**
 
@@ -722,7 +772,7 @@ The fix for this issue is to add another constraint forcing `k * n + r` to be le
 1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
 2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
 
-## <a name="zkevm-2">15. PSE & Scroll zkEVM: Missing Constraint</a>
+## <a name="zkevm-2">16. PSE & Scroll zkEVM: Missing Constraint</a>
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
 
