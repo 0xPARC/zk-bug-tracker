@@ -29,6 +29,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  14. [MiMC Hash: Assigned but not Constrained](#mimc-1)
  15. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
  16. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
+ 17. [Dusk Network: Missing Blinding Factors](#dusk-1)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -809,6 +810,35 @@ instruction.constrain_zero(shf0 - FQ(shift.le_bytes[0]))
 
 1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/1124)
 2. [The Fix](https://github.com/privacy-scaling-explorations/zkevm-specs/pull/372/files)
+
+## <a name="dusk-1">17. Dusk Network: Missing Blinding Factors</a>
+
+Related Vulnerabilities: Incomplete Protocol Implementation
+
+Identified By: [Dusk Network Team](https://github.com/dusk-network)
+
+The Dusk Network is a privacy-oriented blockchain that relies on zk proofs. In order to achieve certain privacy features, the zk proofs need blinding factors for each proof created. The original Dusk implementation of Plonk was missing some of these blinding factors.
+
+**Background**
+
+ZK SNARKs are useful for both their succinctness and their zero knowledge. The main pieces of the Plonk protocol allows the proofs to be succinct, and it only takes a few small steps to make the protocol zero knowledge as well. Making the protocol zero knowledge means that an attacker cannot look at a proof and then derive the witness used to generate that proof.
+
+In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verficiation successful. These secret shifts prevent others from extracting the witness from the proof.
+
+**The Vulnerability**
+
+Dusk's original Plonk implementation was missing some of these blinding factors. Since Dusk is a privacy-oriented blockchain, many of the inputs to the zk proof need to remain private. However, without blinding factors anyone could potentially extract these "private inputs" from the proof data.
+
+**The Fix**
+
+The fix was to simply add blinding factors to the prover polynomials so that the proof keeps the witness private. The Plonk paper doesn't include much writing on these blinding factors, but still includes them in the final protocol at the end. This is likely because it's quite simple (compared to the rest of the protocol) to include them.
+
+**References**
+
+1. [Github Issue](https://github.com/dusk-network/plonk/issues/650)
+2. [Github Fix](https://github.com/dusk-network/plonk/pull/651)
+3. [Plonk Paper](https://eprint.iacr.org/2019/953.pdf) - Section 8, first bullet point explains the blinding factors
+4. [zkSNARKs in a Nutshell](https://chriseth.github.io/notes/articles/zksnarks/zksnarks.pdf) - Section 4.3 explains blinding factors but for R1CS snarks
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
