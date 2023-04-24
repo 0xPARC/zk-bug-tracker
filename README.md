@@ -30,6 +30,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  15. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
  16. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
  17. [Dusk Network: Missing Blinding Factors](#dusk-1)
+ 18. [EY Nightfall: Missing Nullifier Range Check](#nightfall-1)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -839,6 +840,41 @@ The fix was to simply add blinding factors to the prover polynomials so that the
 2. [Github Fix](https://github.com/dusk-network/plonk/pull/651)
 3. [Plonk Paper](https://eprint.iacr.org/2019/953.pdf) - Section 8, first bullet point explains the blinding factors
 4. [zkSNARKs in a Nutshell](https://chriseth.github.io/notes/articles/zksnarks/zksnarks.pdf) - Section 4.3 explains blinding factors but for R1CS snarks
+
+## <a name="nightfall-1">18. EY Nightfall: Missing Nullifier Range Check</a>
+
+Related Vulnerabilities: 3. Arithmetic Over/Under flows
+
+Identified By: [BlockHeader](https://github.com/BlockHeader)
+
+EY Nightfall is a set of smart contracts and ZK circuits that allow users to transact ERC20 and ERC-721 tokens privately. The protocol requires that a nullifier be posted on-chain in order to spend private tokens. However, the protocol did not limit the range of the nullifier to the SNARK scalar field size. This allowed users to double spend tokens.
+
+**Background**
+
+In order to prevent double spending of private tokens, a nullifier is posted on-chain after the tokens are spent. If the nullifier was already present on-chain, then the tokens cannot be spent. The nullifier is computed in a deterministic way such that given the same input parameters (specific to the user’s private tokens in this case), the output nullifier will always be the same. The nullifier is stored on-chain as a 256 bit unsigned integer.
+
+The EVM allows numbers up to 256 bits long, whereas the SNARK circuits used for Nightfall only allowed numbers up to around 254 bits long. Since the SNARK scalar field is 254 bits, a nullifier that is `> 254 bits` will be reduced modulo the SNARK field during the proof generation process. For example, let `p = SNARK scalar field order`. Then any number `x` in the proof generation process will be reduced to `x % p`. So `p + 1` will be reduced to 1.
+
+**The Vulnerability**
+
+The smart contract code that stores past used nullifiers did not check to ensure that the nullifier posted was within the SNARK scalar field (`< ~254 bits`). Since the circuit code is responsible for checking whether a given nullifier is correct or not for the tokens being spent, it will only check the reduced 254 bit version of the input nullifier.
+
+For example, let's say a user wants to spend their tokens and the correct nullifier to do so is `n`. Since the correct nullifier is computed in the circuit code, `n` will be `< ~254 bits`. So the user can successfully spend the tokens by posting `n` on-chain as the nullifier. However, they can again post `n + p` on-chain, where `p = snark scalar field size`. Inside the circuit that checks whether `n + p` is correct, it will convert `n + p` to `n + p % p = n`. `n + p` essentially overflows to just `n`. So the circuit checks `n` and is therefore verified as the correct nullifier. On-chain, `n + p` and `n` are treated as two different nullifiers and don't overflow (unless `n + p > 256 bits`), so the nullifiers are stored separately and the tokens are  spent a second time by the same user.
+
+**The Fix**
+
+The fix was to include a range check to ensure that any nullifiers posted on-chain were less than the SNARK scalar field size. This would prevent any overflows inside the circuit. Each token spend now only has one unique nullifier that can be posted on-chain successfully. Here is a snippet of the actual fix, where they ensure the nullifier is correctly range limited:
+
+```jsx
+//checks to prevent a ZoKrates overflow attack
+require(_inputs[3]<zokratesPrime, "Input too large - possible overflow attack");
+require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
+```
+
+**References**
+
+1. [Github Issue](https://github.com/EYBlockchain/nightfall/issues/95)
+2. [Github Fix](https://github.com/EYBlockchain/nightfall/pull/96)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
