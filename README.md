@@ -1063,7 +1063,7 @@ relayerSquare <== relayer * relayer;
 refundSquare <== refund * refund;
 ```
 
-[Semaphore/semaphore.circom](https://github.com/semaphore-protocol/semaphore/blob/main/circuits/semaphore.circom#L83-L85)
+[Semaphore/semaphore.circom](https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom#L83-L85)
 
 ```jsx
 // nLevels must be < 32.
