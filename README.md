@@ -883,7 +883,7 @@ require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
 
 **Summary**
 
-Related Vulnerabilities: 1. Under-constrained Circuits,
+Related Vulnerabilities: 1. Under-constrained Circuits, 8. Assigned but not Constrained
 
 Identified By: [Summa](https://github.com/summa-dev)
 
