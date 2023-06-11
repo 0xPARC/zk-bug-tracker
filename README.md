@@ -31,6 +31,8 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  16. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
  17. [Dusk Network: Missing Blinding Factors](#dusk-1)
  18. [EY Nightfall: Missing Nullifier Range Check](#nightfall-1)
+ 19. [Summa: Unconstrained Constants Assignemnt](#summa-1)
+
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
  1. [Under-constrained Circuits](#under-constrained-circuits)
@@ -875,6 +877,71 @@ require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
 
 1. [Github Issue](https://github.com/EYBlockchain/nightfall/issues/95)
 2. [Github Fix](https://github.com/EYBlockchain/nightfall/pull/96)
+
+
+## <a name="summa-1">19. Summa: Unconstrained Constants Assignemnt </a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 8. Assigned but not Constrained
+
+Identified By: [Summa](https://github.com/summa-dev)
+
+The circuit, written in Halo2, makes use of an external `LessThan` gadget that returns 1 if the `lhs` is less than the `rhs`. The logic of the circuit constrains the output to be equal to 1 using an auxiliary value `check`. However, the `check` value is assigned during witness generation. This allows a malicious prover to set `check` to any value, including 0, which would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
+
+**Background**
+
+Summa is a zk proof of solvency protocol. As part of the (simplified) logic of the protocol, the prover needs to prove that their `assets_sum` is greater than the `liabilities_sum`. The circuit would use a gadget from [zk-evm](https://github.com/privacy-scaling-explorations/zkevm-circuits/blob/4cfccfa6c3b251284ff61eeb907d548d59206753/gadgets/src/less_than.rs) to perform such less_than verification. The gadget would return 1 if the `lhs` is less than the `rhs`, and 0 otherwise.
+
+**The Vulnerability**
+
+The circuit would have a custom gate to enforce that `check` is equal to `lt` which is the output of the comparison performed by the gadget
+
+```rust
+    meta.create_gate(
+        "verifies that `check` from current config equal to is_lt from LtChip",
+        |meta| {
+            let q_enable = meta.query_selector(lt_selector);
+
+            let check = meta.query_advice(col_c, Rotation::cur());
+
+            vec![q_enable * (config.lt_config.is_lt(meta, None) - check)]
+        },
+    );
+```
+
+Later on the circuit would have an assignment function to be called during witness generation to assign the value 1 to check 
+
+```rust
+    // set check to be equal to 1
+    region.assign_advice(
+        || "check",
+        self.config.advice[2],
+        0,
+        || Value::known(Fp::from(1)),
+    )?;
+```
+
+However, this design erroneusly suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
+
+**The Fix**
+
+To fix the issue, the custom gate has been modified to take a constant expression (and set it to 1!) rather than a value obtained from the advice column (which is the one that can be modified by the prover during witness generation).
+
+```rust
+    meta.create_gate("is_lt is 1", |meta| {
+        let q_enable = meta.query_selector(lt_selector);
+
+        vec![
+            q_enable * (config.lt_config.is_lt(meta, None) - Expression::Constant(Fp::from(1))),
+        ]
+    });
+```
+
+**References:**
+
+1. [Issue](https://github.com/summa-dev/summa-solvency/issues/32)
+2. [PR](https://github.com/summa-dev/summa-solvency/pull/40)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
