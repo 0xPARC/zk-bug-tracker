@@ -27,11 +27,12 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  12. [PlonK: Frozen Heart](#plonk-1)
  13. [Zcash: Trusted Setup Leak](#zcash-1)
  14. [MiMC Hash: Assigned but not Constrained](#mimc-1)
- 15. [PSE & Scroll zkEVM: Missing Overflow Constraint](#zkevm-1)
- 16. [PSE & Scroll zkEVM: Missing Constraint](#zkevm-2)
+ 15. [PSE & Scroll zkEVM: Missing Overflow Constraint](#pse-zkevm-1)
+ 16. [PSE & Scroll zkEVM: Missing Constraint](#pse-zkevm-2)
  17. [Dusk Network: Missing Blinding Factors](#dusk-1)
  18. [EY Nightfall: Missing Nullifier Range Check](#nightfall-1)
  19. [Summa: Unconstrained Constants Assignemnt](#summa-1)
+ 20. [Polygon zkEVM: Missing Remainder Constraint](#polygon-zkevm-1)
 
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
@@ -713,7 +714,7 @@ outs[0] <== S[nInputs - 1].xL_out;
 1. [TornadoCash Explanation](https://tornado-cash.medium.com/tornado-cash-got-hacked-by-us-b1e012a3c9a8)
 2. [Actual Github Fix](https://github.com/iden3/circomlib/pull/22/files)
 
-## <a name="zkevm-1">15. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
+## <a name="pse-zkevm-1">15. PSE & Scroll zkEVM: Missing Overflow Constraint</a>
 
 **Summary**
 
@@ -776,7 +777,9 @@ The fix for this issue is to add another constraint forcing `k * n + r` to be le
 1. [Github Issue](https://github.com/privacy-scaling-explorations/zkevm-circuits/issues/996)
 2. [Commit of the Fix](https://github.com/privacy-scaling-explorations/zkevm-circuits/pull/999)
 
-## <a name="zkevm-2">16. PSE & Scroll zkEVM: Missing Constraint</a>
+## <a name="pse-zkevm-2">16. PSE & Scroll zkEVM: Missing Constraint</a>
+
+**Summary**
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits, 8. Assigned but not Constrained
 
@@ -816,6 +819,8 @@ instruction.constrain_zero(shf0 - FQ(shift.le_bytes[0]))
 
 ## <a name="dusk-1">17. Dusk Network: Missing Blinding Factors</a>
 
+**Summary**
+
 Related Vulnerabilities: Incomplete Protocol Implementation
 
 Identified By: [Dusk Network Team](https://github.com/dusk-network)
@@ -844,6 +849,8 @@ The fix was to simply add blinding factors to the prover polynomials so that the
 4. [zkSNARKs in a Nutshell](https://chriseth.github.io/notes/articles/zksnarks/zksnarks.pdf) - Section 4.3 explains blinding factors but for R1CS snarks
 
 ## <a name="nightfall-1">18. EY Nightfall: Missing Nullifier Range Check</a>
+
+**Summary**
 
 Related Vulnerabilities: 3. Arithmetic Over/Under flows
 
@@ -942,6 +949,65 @@ To fix the issue, the custom gate has been modified to take a constant expressio
 
 1. [Issue](https://github.com/summa-dev/summa-solvency/issues/32)
 2. [PR](https://github.com/summa-dev/summa-solvency/pull/40)
+
+
+## <a name="polygon-zkevm-1">20. Polygon zkEVM: Missing Remainder Constraint</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
+
+Identified By: [Spearbit](https://spearbit.com/)
+
+The Polygon zkEVM division circuit was missing a constraint, which would allow a malicious prover to create a valid proof of a false division or modulo operation. Since the division and modulo operation are basic building blocks for the zkEVM, the prover could convince the verifier of a faulty state update.
+
+**Background**
+
+The Polygon zkEVM circuits are programmed using their own zk assembly language known as zkASM. Small components of the large zkEVM circuit can be broken down into different subroutines. In this case, the `divARITH` subroutine was missing a constraint.
+
+The division subroutine is intended to constrain:
+
+```jsx
+A * B + C = D + E
+```
+
+where:
+* A = divisor
+* E = dividend
+* B = quotient
+* C = remainder
+* D = set to 0 by subroutine
+
+The inputs `B` and `C` are free inputs chosen by the prover. `B` is supposed to be constrained to `E / A` and `C` is supposed to be constrained to `C = E % A`. This subroutine provides a way to prove the division or modulo operation.
+
+**The Vulnerability**
+
+The issue with this subroutine is that there is no constraint that the remainder is less than the divisor. So in this case, without the constraint, it's possible for `C >= A`. A malicious prover could set `B = E / A - 1` and `C = (E % A) + A`. This would still satisfy the equation `A * B + C = D*2**256 + E`.
+
+A good example (taken from the [twitter explanation](https://twitter.com/SpearbitDAO/status/1679189382907953180)) is to let:
+* A (divisor) = 10
+* E (dividend) = 101
+
+The expected remainder (C) is 1 and the expected quotient (B) is 10. However, a malicious prover could choose `B = 9` and `C = 11`. This would satisfy `10*9 + 11 = 101`. The code never constrains `C < A` or `11 < 10` so the proof is successful.
+
+This kind of forgery allows a malicious prover to tweak division and modulo operations in their favor. Since division and modulo operations are basic building blocks of the EVM, this could result in many different types of hacks favorable to the prover.
+
+**The Fix**
+
+The original authors had a constraint that `C < E` but instead needed `C < A`. So the original code:
+```jsx
+C => A ; remainder
+E => B ; divisor
+```
+was updated to:
+```jsx
+A => B ; divisor
+C => A ; remainder
+```
+
+**References**
+
+1. [Spearbit Twitter Explanation Thread](https://twitter.com/SpearbitDAO/status/1679189382907953180)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
