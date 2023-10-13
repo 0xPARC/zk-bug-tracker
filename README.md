@@ -33,6 +33,9 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  18. [EY Nightfall: Missing Nullifier Range Check](#nightfall-1)
  19. [Summa: Unconstrained Constants Assignemnt](#summa-1)
  20. [Polygon zkEVM: Missing Remainder Constraint](#polygon-zkevm-1)
+ 21. [Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT](#hexens-polygonzkevm-1)
+ 22. [Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance](#hexens-polygonzkevm-2)
+ 23. [Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak](#hexens-polygonzkevm-3)
 
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
@@ -1008,6 +1011,350 @@ C => A ; remainder
 **References**
 
 1. [Spearbit Twitter Explanation Thread](https://twitter.com/SpearbitDAO/status/1679189382907953180)
+
+## <a name="hexens-polygonzkevm-1">21. Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits
+
+Identified By: [Hexens](https://hexens.io/)
+
+**Background**
+
+The Storage state machine uses SMT (Sparse Merkle Tree) and implements provable CRUD operations in conjunction with Storage ROM.
+
+In order to prove the (Key, Value) inclusion in the SMT, the state machine represents the key as bit string. It traverses the tree from the root down to the leaf using LSBs (least significant bits) of the key: 0/1 values of the bit correspond to the left/right edge traversal.
+
+As the tree is sparse, the leaf level is not necessarily equal to the key bits length, that means that as soon as the leaf is inserted into the tree, the remaining part of the key (rkey) is being encoded into the leaf value.
+
+The inclusion check algorithm consists of two parts (reference link: https://wiki.polygon.technology/docs/zkEVM/zkProver/basic-smt-ops):
+
+1. Checking The Root - is done as a generic Merkel Tree root check by climbing from the leaf to the root using sibling hashes.
+
+2. Checking the Key: I. In order to check the key, the state machine prepends every next path bit to the remaining key (rkey), e.g. `rkey||b1||b0` (for the leaf level = 2). II. By the end of the operation, which can be distinguished in Storage ROM by the LATCH_GET command, the iLatchGet is set to 1. III. A Permutation constraint is used in the Main SM to ensure that the key passed from the zkEVM ROM matches the one constructed in the step (I):
+
+```jsx
+    sRD {
+        SR0 + 2^32*SR1, SR2 + 2^32*SR3, SR4 + 2^32*SR5, SR6 + 2^32*SR7,
+        sKey[0], sKey[1], sKey[2], sKey[3],
+        op0, op1, op2, op3,
+        op4, op5, op6, op7,
+        incCounter
+    } is
+    Storage.iLatchGet {
+        Storage.oldRoot0, Storage.oldRoot1, Storage.oldRoot2, Storage.oldRoot3,
+        Storage.rkey0, Storage.rkey1, Storage.rkey2, Storage.rkey3,
+        Storage.valueLow0, Storage.valueLow1, Storage.valueLow2, Storage.valueLow3,
+        Storage.valueHigh0, Storage.valueHigh1, Storage.valueHigh2, Storage.valueHigh3,
+        Storage.incCounter + 2
+    };
+```
+
+Hence, the part (1) is used to prove that the Value exists in the SMT, and the part (2) is used to prove that the Value is actually binded with the correct Key.
+
+**The Vulnerability**
+
+The issue arise as the next-bit polynomial rkeyBit is missing a binary constraint in the Storage SM, as well as the fact that the Storage ROM, pretty naturally, does not assert that the next bit, that comes from a free input, cannot be of any other value than 0 or 1
+
+`storage_sm_get.zkasm`:
+
+```
+; If next key bit is zero, then the sibling hash must be at the right (sibling's key bit is 1)
+${GetNextKeyBit()} => RKEY_BIT
+RKEY_BIT                        :JMPZ(Get_SiblingIsRight)
+```
+
+Nonetheless, it can not be abused straightforwardly; a number of limitations must be overcome. Due to the specifics of the key reconstruction algorithm and the fact that the value inclusion check in the part (1) needs to hold true simultaneously. 
+
+Limitations overview:
+
+In the Storage SM, The key is broken down into four registers: rkey0,..,rkey3 and the path is constructed by cycling the consecutive bits of that registers:
+`path = [rKey0_0, rKey1_0, rKey2_0, rKey3_0, rKey0_1, ... ]` (reference link: https://wiki.polygon.technology/docs/zkEVM/zkProver/construct-key-path)
+
+Thus, in order to reconstruct the key from the bits, the corresponding rkey polynomial needs to be prepended with that bit:
+
+`rkey[level % 4] ||= rkeyBit`
+
+It is important to mention that the key is actually the POSEIDON hash of the account address, storage slot and the query key.
+
+In order to avoid `modulo 4` operation, the Storage SM introduces LEVEL register, which also consists of 4 parts: level0,..level3 and the ROTATE_LEVEL opcode in the Storage ROM.
+
+The LEVEL is firstly set to `leaf_level % 4`, and then ROTATE_LEVEL is used every time the prover needs to climb the tree:
+
+`storage-sm-get.zkasm`:
+
+```
+; Update remaining key
+                                :ROTATE_LEVEL
+                                :CLIMB_RKEY
+
+                                :JMP(Get_ClimbTree)
+```
+
+Level rotation(storage.pil):
+
+```jsx
+pol rotatedLevel0 = iRotateLevel*(level1-level0) + level0;
+pol rotatedLevel1 = iRotateLevel*(level2-level1) + level1;
+pol rotatedLevel2 = iRotateLevel*(level3-level2) + level2;
+pol rotatedLevel3 = iRotateLevel*(level0-level3) + level3;
+```
+
+Finally, the rkey will be modified when using the CLIMB_RKEY opcode
+
+`storage.pil`:
+
+```jsx
+pol climbedKey0 = (level0*(rkey0*2 + rkeyBit - rkey0) + rkey0);
+pol climbedKey1 = (level1*(rkey1*2 + rkeyBit - rkey1) + rkey1);
+pol climbedKey2 = (level2*(rkey2*2 + rkeyBit - rkey2) + rkey2);
+pol climbedKey3 = (level3*(rkey3*2 + rkeyBit - rkey3) + rkey3);
+```
+
+In order to hold the above-mentioned permutation constraint all of the rkey0-3 registers must be modified by the end of the operation (when the LATCH_GET opcode is used). As well as the Storage ROM will be rearranging the left/right node hashes by matching the next-bit. Given the fact that one can only abuse the non-zero values of the next-bit, the limitations can be overcome by inserting arbitrary Value into the SMT with a Key that has 1111 as its LSBs.
+
+`Key = ***1111`, this is needed to have the opportunity to change all 4 rkey registers.
+This means that the POSEIDON hash that is derived from the account address and the storage slot number (in addition to the storage query key), needs to have the least significant bits of its result registers hash0,..hash3 set as 1:
+
+```jsx
+hash0 = ***1
+hash1 = ***1
+hash2 = ***1
+hash3 = ***1
+```
+
+As only 1 bit of every POSEIDON hash register is fixed, it is a trivial task to overcome the 4-bit entropy and find a storage slot (for any given account address) to meet the attack prerequisites.
+Another limitation is that the leaf we are inserting must have a level greater than 4, in the real-world scenario this is guaranteed to be the case (with a negligible negative outcome probability) as there will be millions of leafs inserted into the tree. Even if it's not the case the attacker will only need to precompute two storage slots and insert them both to guarantee the minimal level.
+
+After inserting `(KeyPrecomputed, ValueArbitrary)` into the SMT using the opSSTORE procedure, and thus fulfilling the prerequisites the attacker can fake the binding of any key `KeyToFake` with the value ValueArbitrary, by setting the last 4 next-bit values from the free input to:
+
+```jsx
+rkeyBit[0] =  rkeyToFake[0] - rkey0*2
+rkeyBit[1] =  rkeyToFake[1] - rkey1*2
+rkeyBit[2] =  rkeyToFake[2] - rkey2*2
+rkeyBit[3] =  rkeyToFake[3] - rkey3*2
+```
+
+As the Storage ROM uses JMPZ to distinguish the climb path, despite being greater than 1 the rkeyBit will be treated the same way as if it was set to 1, and the root check (Value inclusion) will successfully be bypassed.
+
+
+The main impact that will favor the attacker will be to fake the inclusion of (KeyAttackerBalance, ArbitraryAmount) in the SMT.
+
+**The Fix**
+
+The Fix of this issue is to add the missing binary constraint.
+
+**References**
+
+1. [Hexens Audit Report](https://github.com/Hexens/Smart-Contract-Review-Public-Reports/blob/main/Hexens_Polygon_zkEVM_PUBLIC_27.02.23.pdf)
+2. [Fix Commit](https://github.com/0xPolygonHermez/zkevm-proverjs/pull/145/commits/9d6a8948636c05d508694a90d192a0713562ce29)
+
+## <a name="hexens-polygonzkevm-2">22. Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance</a>
+
+**Summary**
+
+Identified By: [Hexens](https://hexens.io/)
+
+**Background**
+
+The zkEVM ROM architecture uses Contexts (CTX) to divide and emulate virtual address to physical address translation between call contexts inside one transaction. One CTX address space is used to determine the dynamic memory space that changes between call contexts, as well as the stack and CTX variables (such as msg.sender, msg.value, active storage account and etc.). The context switch is done using auxiliary variables such as originCTX, which refers to the origin CTX that created the current context as well as currentCTX. There is a special CTX(0) that is used for storing the GLOBAL variables such as tx.origin or old state root, the first context a batch transaction starts with is CTX(1), and it increments as new calls, context switches, or transactions are being processed.
+
+**The Vulnerability**
+
+The vulnerability lies in the "identity" (0x4) precompiled contract implementation. In case there is no originCTX set, as that effectively means that the EOA is directly calling the precompiled contract and not within an inner contract call, the precompiled contracts should consume intrinsic gas and end transaction execution. Although the context switching is done correctly in the ecrecover (0x1) precompile, the identity precompile is erroneous in its context switching. To check that the transaction is calling the contract directly, is utilizes originCTX variable and checks whether it is equal to 0:
+
+https://github.com/0xPolygonHermez/zkevm-rom/blob/develop/main/precompiled/identity.zkasm#L21
+
+```
+$ => CTX        :MLOAD(originCTX), JMPZ(handleGas)
+```
+
+Although it immediately loads the originCTX into the CTX register, all of the memory operations will be done for the CTX(0).
+
+As the context switch between GLOBAL and CTX contexts is done via useCTX:
+https://github.com/0xPolygonHermez/zkevm-proverjs/blob/develop/pil/main.pil#LL203-L204C85
+
+```
+pol addrRel = ind*E0 + indRR*RR + offset;
+pol addr = useCTX*CTX*2^18 + isStack*2^16 + isStack*SP + isMem*2^17+ addrRel;
+```
+
+GLOBAL -> useCTX = 0, CTX -> useCTX = 1
+
+Effectively the final address will be the same if the CTX register is set to 0. Given that the variables are addressed by their offset, the ROM's global variables will be double-referenced by their appropriate CTX variables with the same offset.
+
+`Example`:
+```
+OFFSET(0): VAR GLOBAL oldStateRoot  <--> VAR CTX txGasLimit
+OFFSET(1): VAR GLOBAL oldAccInputHash <--> VAR CTX txDestAddr
+...
+OFFSET(17): VAR GLOBAL nextHashPId <--> VAR CTX gasRefund
+```
+
+Thus colliding the GLOBAL and CTX variable offsets.
+
+The attack breakdown:
+
+* Any user (EOA) creates a transaction with a destination address set to identity precompiled contract (0x4)
+* When the execution reaches `$ => CTX        :MLOAD(originCTX), JMPZ(handleGas), the CTX will be set to 0`, and a jump will be done to the handleGas label
+* `handleGas` will check the refund (an important detail is that in the current VAR configuration, the `gasRefund` variable collides with `nextHashPId`, which will be 0 in this case, although if it were to collide with another VAR that has bigger absolute values in it than the caller will "print money out of thin air" for himself as well), after refunding the sender it continues to a point where it needs to account the gas consumed to the sequencer address
+
+```
+;; Send gas spent to sequencer
+sendGasSeq:
+        $ => A          :MLOAD(txGasLimit)
+        A - GAS => A
+
+        $ => B          :MLOAD(txGasPrice)
+        ; Mul operation with Arith
+        A               :MSTORE(arithA)
+        B               :MSTORE(arithB), CALL(mulARITH)
+        $ => D          :MLOAD(arithRes1) ; value to pay the sequencer in D
+```
+As the txGasLimit references the oldStateRoot, which is the hash of the state tree and has a very big absolute value, the `MLOAD(txGasLimit)` will return the oldStateRoot value instead. By setting a gasPrice to 1 (or an arbitrarily small value not to overflow the multiplication), the sequencer will be credited with an enormously big balance
+
+The attack requirements and probability:
+For any user to be able to credit himself an almost infinite ether balance, he needs to be the one sequencing it. The most convenient way to do so is to force a batch in L1 PolygonZkEVM contract.
+As in the current configuration, the trusted sequencer ignores the forced batches; it stores them in separate state.forced_batch table in the DB:
+https://github.com/0xPolygonHermez/zkevm-node/blob/develop/state/pgstatestorage.go#L316-L320 
+
+And when the sequencer will query for the pending batches to be sequenced in the getSequencesToSend() function:
+
+https://github.com/0xPolygonHermez/zkevm-node/blob/develop/sequencer/sequencesender.go#L114 
+
+It will only query for the batches from state.batch table:
+https://github.com/0xPolygonHermez/zkevm-node/blob/develop/state/pgstatestorage.go#L535-L539 
+
+Thus the attacker will need to force a batch and then to wait for the timeout period to pass and sequence it, setting the sequencer to arbitrary address. In the current configuration the attack gives opportunity to anyone to force such batch and after the timeout period to be credited with unlimited ether balance, if combined with obfuscating the transaction with other "dummy" transactions and adding a bridgeAsset() call somewhere after in the same batch, the attacker will gain a deposit leaf of arbitrary ether amount as soon as the batch is verified and can claim all of the ether held by the bridge.
+
+**The Fix**
+
+The Fix of this issue is to change the `identity.zkasm` code to save the `originCTX` in a register before jumping to the handleGas label.
+
+**References**
+
+1. [Hexens Audit Report](https://github.com/Hexens/Smart-Contract-Review-Public-Reports/blob/main/Hexens_Polygon_zkEVM_PUBLIC_27.02.23.pdf)
+2. [Fix Commit](https://github.com/0xPolygonHermez/zkevm-rom/commit/2ddeffbed7c022e04032e6d56ed6c6fb14cc38dc#diff-388aa2d51760e0d46ac2b556f46a39e7e893b223b4c3604fa804e29557078ffa)
+
+## <a name="hexens-polygonzkevm-3">23. Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak</a>
+
+**Summary**
+
+Related Vulnerabilities: 1. Under-constrained Circuits
+
+Identified By: [Hexens](https://hexens.io/)
+
+**Background**
+
+The combination of the free input checking in zkEVM ROM and a missing constraint in main.pil leads to execution hijack with a possibility to jump to an arbitrary address in ROM.
+
+**The Vulnerability**
+
+One of the impacts is the arbitrary increase of balance for any caller.
+
+In the file utils.zkasm some of the procedures use free input calls to make small calculations, for example, 
+
+`computeSendGasCall`:
+
+```
+; C = [c7, c6, ..., c0]
+; JMPN instruction assures c0 is within the range [0, 2^32 - 1]
+${GAS >> 6} => C        :JMPN(failAssert)
+${GAS & 0x3f} => D
+
+; since D is assured to be less than 0x40
+; it is enforced that [c7, c6, ..., c1] are 0 since there is no value multiplied by 64
+; that equals the field
+; Since e0 is assured to be less than 32 bits, c0 * 64 + d0 could not overflow the field
+C * 64 + D              :ASSERT
+```
+In such cases, to ensure the validness of the free input JMPN is used. JMPN will effectively check whether the free input set in register C is in the range `[0,2^32-1]`. This is a security assumption that ensures that the register is not overflowing in the assertion stage:
+
+
+```
+C * 64 + D              :ASSERT
+```
+
+The JMPN constraints:
+https://github.com/0xPolygonHermez/zkevm-proverjs/blob/develop/pil/main.pil#L209-L228
+
+```
+pol jmpnCondValue = JMPN*(isNeg*2^32 + op0);
+```
+
+By checking that the jmpnCondValue is a 32-bit number we assure that the op0 is in the `[-2^32,2^32)` range, thus preventing the overflow. The jump destination, as well as the zkPC constraints, are consequently based on the `inNeg`:
+https://github.com/0xPolygonHermez/zkevm-proverjs/blob/develop/pil/main.pil#L322-L336
+
+```
+zkPC' = doJMP * (finalJmpAddr - nextNoJmpZkPC) + elseJMP * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC;
+```
+
+Nonetheless, a constraint is missing to ensure that isNeg evaluates only to 1 or 0. In the case of utils.zkasm procedures, there is no elseAddr specified, and having:
+
+```
+finalElseAddr = nextNoJmpZkPC
+doJMP = isNeg
+elseJMP = (1-isNeg)
+```
+
+The zkPC constraint can be reduced to:
+
+```
+zkPC' = isNeg * (finalJmpAddr - nextNoJmpZkPC) + nextNoJmpZkPC
+```
+
+Where both finalJmpAddr and nextNoJmpZkPC are known values in the ROM program compilation phase.
+
+In order to be able to jump to arbitrary zkPC, the attacker needs to calculate corresponding values for isNeg and op0; this can be done using derived formulas:
+
+```
+isNeg = (zkPC_arbitrary - nextNoJmpZkPC) * (finalJmpAddr - nextNoJmpZkPC)-1 mod P
+op0 = - isNeg * 232 mod P
+```
+
+The attack breakdown:
+
+At this point attacker has a primitive to jump to an arbitrary address; the next step will be to find a suitable gadget to jump to, the main requirements for the target are to:
+* Not to corrupt/revert zkEVM execution
+* Impact favourably for the attacker
+
+One of the jump chains found is to use one of the *CALL opcodes as the start of the attack chain to call the computeSendGasCall and subsequently craft a jump into the refundGas label's code:
+https://github.com/0xPolygonHermez/zkevm-rom/blob/develop/main/process-tx.zkasm#L496-L498
+
+```
+$ => A                          :MLOAD(txSrcOriginAddr)
+0 => B,C                        ; balance key smt
+$ => SR                         :SSTORE
+```
+
+This will set txSrcOriginAddr balance to the value contained in register D and finish the transaction execution. To abuse the value set by the SSTORE instruction, attacker needs to set huge value in the register D, for this the DELEGATECALL opcode can be used, as in the implementation it sets the register D just before the computeSendGasCall call:
+
+```
+$ => D          :MLOAD(storageAddr)
+...
+E               :MSTORE(retCallLength), CALL(computeGasSendCall); in: [gasCall: gas sent to call] out: [A: min( requested_gas , all_but_one_64th(63/64))]
+```
+
+So the D register will be set with storageAddr which has very big absolute value.
+
+Additional setup for the attack:
+* A contract should be deployed with a function (or fallback) that initiates a delegatecall() call to any address.
+* The transaction should be initiated with gasPrice set to 0 not to overflow in gas when sending it to the sequencer, as well as this will favor the fact of attacker getting to prove the batch initiated
+* The gasLimit should be precalculated to end up with 0 gas at the end of the execution, this is done for the same reason mentioned above.
+
+**The Fix**
+
+To fix this issue a constraint must be added for the `inNeg` polynomial to ensure that it evaluates only to 0 or 1. e.g.
+
+```jsx
+isNeg * (1-isNeg) = 0
+```
+
+**References**
+
+1. [Hexens Audit Report](https://github.com/Hexens/Smart-Contract-Review-Public-Reports/blob/main/Hexens_Polygon_zkEVM_PUBLIC_27.02.23.pdf)
+2. [Fix Commit](https://github.com/0xPolygonHermez/zkevm-rom/commit/2ddeffbed7c022e04032e6d56ed6c6fb14cc38dc#diff-353b5f6c54dee2e069c391d2e2e6e3f503853e1d20126225f13a4d2d70a0d445)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
