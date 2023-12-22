@@ -1366,7 +1366,7 @@ Related Vulnerabilities: Bad Polynomial Implementation
 Identified By: [NCC Group](https://www.nccgroup.com/)
 
 Incorrect polynomial representation
-resulting from arithmetic operations may break as sumptions and lead to erroneous computations or
+resulting from arithmetic operations may break assumptions and lead to erroneous computations or
 may result in denial of service attacks via Rust panics.
 
 **Background**
