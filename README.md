@@ -1488,6 +1488,20 @@ input"),
 3. Hashing the resulting ciphertext with the Poseidon hash function.
 4. Constraining the resulting digest to equal input_hash (exposed as a public input).
 
+The crux of the vulnerability is that, for `InputID::Private parameters`, the input_hash does not form a binding commitment to the input. Given that a malicious prover can choose a different `ivk` on the caller side, this means that the input on the caller's side can differ from the input on the callee's side, despite generating the same input_id.
+
+For example, the attacker constructs a different `ivk'` in the caller circuit from the callee, and then provides an input' of his own based on the input in the callee, so that the `input'` can get the same ciphertext as the callee circuit after encrypting it with the `ivk'`. From this, the attacker with a different input in the caller circuit can also get the `input_hash` in the callee circuit.
+
+This manipulation allows a malicious prover to ensure that both the caller and callee circuits produce the same input_id for different inputs, thereby breaking the binding between arguments/inputs across call boundaries in snarkVM.
+
+**The Fix**
+
+To mitigate this vulnerability, it is recommended to use committing encryption: the ciphertext must form a binding commitment to the plaintext. This can be achieved by enforcing `tcm = hash(tvk)` and exposing `tcm` (the transaction commitment) as a public input on the caller's side because `(commit(key) enc(key, pt))` is naturally binding.
+
+**References**
+
+1. [zkSecurity Audit Report](https://www.zksecurity.xyz/blog/2023-aleo-synthesizer.pdf)
+2. [Fix Commit](https://github.com/AleoHQ/snarkVM/pull/2063)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
