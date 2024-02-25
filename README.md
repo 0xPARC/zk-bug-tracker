@@ -36,7 +36,8 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  21. [Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT](#hexens-polygonzkevm-1)
  22. [Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance](#hexens-polygonzkevm-2)
  23. [Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak](#hexens-polygonzkevm-3)
- 24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#Zendoo-polynomial)
+ 24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#zendoo-polynomial-1)
+ 25. [Aleo: Non-Committing Encryption Used in InputID::Private](#aleo-encryption-1)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
 
@@ -1357,7 +1358,7 @@ isNeg * (1-isNeg) = 0
 1. [Hexens Audit Report](https://github.com/Hexens/Smart-Contract-Review-Public-Reports/blob/main/Hexens_Polygon_zkEVM_PUBLIC_27.02.23.pdf)
 2. [Fix Commit](https://github.com/0xPolygonHermez/zkevm-rom/commit/2ddeffbed7c022e04032e6d56ed6c6fb14cc38dc#diff-353b5f6c54dee2e069c391d2e2e6e3f503853e1d20126225f13a4d2d70a0d445)
 
-## <a name="Zendoo-polynomial">24. Zendoo: Missing Polynomial Normalization after Arithmetic Operations</a>
+## <a name="zendoo-polynomial-1">24. Zendoo: Missing Polynomial Normalization after Arithmetic Operations</a>
 
 **Summary**
 
@@ -1437,6 +1438,56 @@ Zendoo Developers introduced a function named `truncate_leading_zeros()` which r
 
 1. [NCC Group Audit Report](https://research.nccgroup.com/2021/11/30/public-report-zendoo-proof-verifier-cryptography-review/)
 2. [Fix Commit](https://github.com/HorizenOfficial/ginger-lib/pull/112/commits/8e377aa3ba7e383681a5a3421b7bce67c201f8f7)
+
+## <a name="aleo-encryption-1">25. Aleo: Non-Committing Encryption Used in InputID::Private</a>
+
+**Summary**
+
+Related Vulnerabilities: Data Validation
+
+Identified By: [zkSecurity](https://www.zksecurity.xyz/)
+
+`input_hash` is not a binding commitment to `input`, which leads to an attacker being able to construct hash collisions via the transaction view key and input.
+
+**Background**
+
+Aleo employs to "transfer across" inputs from a caller's circuit to a callee's circuit. This transfer mechanism, crucial for the interaction between different circuits, is implemented using the commit-and-prove technique. Specifically, the technique involves:
+
+1. Both the caller and callee commit to their arguments and expose these commitments as public inputs.
+2. The network (verifier) checks both proofs and ensures that the exposed commitments match.
+
+The core of the implementation in snarkVM is: the caller witnesses and exposes `input_ids` of the request as public input, which are also exposed by the callee. The network enforces equality of these `input_ids`.
+
+**The Vulnerability**
+
+The vulnerability specifically arises in the last step when handling InputID::Private type arguments. In the case of InputID::Private, the input_id is derived by:
+
+`InputID::Private`:
+
+```rust
+// A private input is encrypted (using `tvk`) and hashed to a field element.
+InputID::Private(input_hash) => {
+	// Prepare the index as a constant field element.
+	let input_index = Field::constant(console::Field::from_u16(index as u16));
+	// Compute the input view key as `Hash(function ID || tvk || index)`.
+	let input_view_key = A::hash_psd4(&[function_id.clone(), tvk.clone(), input_index]);
+	// Compute the ciphertext.
+	let ciphertext = match &input {
+			Value::Plaintext(plaintext) => plaintext.encrypt_symmetric(input_view_key),
+			// Ensure the input is a plaintext.
+			Value::Record(..) => A::halt("Expected a private plaintext input, found a record
+input"),
+	};
+	// Ensure the expected hash matches the computed hash.
+	input_hash.is_equal(&A::hash_psd8(&ciphertext.to_fields()))
+}
+```
+
+1. Generating `ivk` (input_view_key) from `tvk` (transaction view key).
+2. Encrypting input using input_view_key.
+3. Hashing the resulting ciphertext with the Poseidon hash function.
+4. Constraining the resulting digest to equal input_hash (exposed as a public input).
+
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
