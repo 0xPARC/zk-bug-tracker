@@ -38,6 +38,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  23. [Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak](#hexens-polygonzkevm-3)
  24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#zendoo-polynomial-1)
  25. [Aleo: Non-Committing Encryption Used in InputID::Private](#aleo-encryption-1)
+ 26. [Light Protocol: Modification of shared state is not an atomic operation](#light-protocol-1)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
 
@@ -1502,6 +1503,88 @@ To mitigate this vulnerability, it is recommended to use committing encryption: 
 
 1. [zkSecurity Audit Report](https://www.zksecurity.xyz/blog/2023-aleo-synthesizer.pdf)
 2. [Fix Commit](https://github.com/AleoHQ/snarkVM/pull/2063)
+
+## <a name="light-protocol-1">26. Light Protocol: Modification of shared state is not an atomic operation</a>
+
+**Summary**
+
+Identified By: [HashCloak Inc](https://hashcloak.com/)
+
+Operations on shared state within merkle tree do not possess atomicity. This lack of atomicity, especially in a concurrent execution environment, can lead to inconsistencies or security vulnerabilities as multiple operations may attempt to modify the same state simultaneously.
+
+**Background**
+
+Light Protocol is a privacy protocol on the Solana blockchain that enables users to transfer tokens anonymously. It's built with Groth16 zk-SNARK verifier and Poseidon Merkle tree to ensure the correctness and privacy of token transfers. Users manage encrypted UTXOs on-chain for privacy. The protocol addresses the challenge of executing complex cryptographic computations within Solana's resource-constrained environment by breaking down the execution logic into smaller instructions and safeguarding against potential attacks.
+
+**The Vulnerability**
+
+There are two types of accounts associated with merkle tree operations:
+
+1. LightProtocol designs user accounts for users to store encrypted UTXOs onchain,giving them an overview of their private holdings.
+2. tmp_account created by signer.
+
+In LightProtocol, locks are implemented by binding them to the public key of the originator signer. The problem is that in the current implementation, it is possible to execute the Merkle tree command with different temporary storage accounts at the same time, as long as they are initiated by the same signer.
+
+```rust
+	pubkey_check(
+		*signer.key,
+		solana_program::pubkey::Pubkey::new(&merkle_tree_pda_data.pubkey_locked),
+		String::from("Merkle tree locked by another account."),
+	)?;
+```
+
+```rust
+	merkle_tree_pda_data.time_locked = <Clock as Sysvar>::get()?.slot;
+	merkle_tree_pda_data.pubkey_locked = signer.key.to_bytes().to_vec();
+	msg!("Locked at slot: {}", merkle_tree_pda_data.time_locked);
+```
+
+It only prevents different signers from modifying the state of the Merkle tree at the same time, but it does not prevent the same signer from using different temporary storage accounts (`_tmp_storage_pda` in the code from commits `870c07...8d4260` and `b85065 ...9eee19`) for concurrent operations. Therefore an attacker can utilize different temporary storage accounts with the same initiator identity to perform Merkle tree update operations simultaneously. This means that in a concurrent environment, the state of the Merkle tree (e.g., the `filled_subtrees[]` array) may be updated without completing all the necessary validation steps, resulting in data consistency and integrity not being guaranteed.
+
+Attack method: an interrupt is inserted at some point during the Merkle tree update process, causing some instructions to be executed while the rest of the instructions are reserved to continue in subsequent operations. The attacker does this by concurrently executing two transactions (each missing the last instruction). Since the lock is only on the initiator's public key and not the temporary storage account, the second transaction can start executing without the first one being completed. This causes the `filled_subtrees[]` field to be updated with the results of the second transaction, not the first.
+
+The attacker sends the last instruction of the first transaction after the data from the second transaction has been merged into the Merkle tree state. Due to the previous concurrent execution, the `filled_subtrees[]` field already contains the data from the second transaction, but the system records that the first transaction was paid. Ultimately, an attacker can effectively merge the data of the second transaction into the Merkle tree without paying for it and exploit the UTXO of this transaction.
+
+**The Fix**
+
+The correct approach should be to bind the lock to the temporary storage account used during execution, ensuring that no concurrent modifications to the Merkle tree state can be made at the same time, even by the same initiator of the operation.
+
+In `src/poseidon_merkle_tree/processor.rs`, assign to the field `pubkey_locked` the key of `_tmp_storage_pda` instead of the key of signer.
+
+```rust
+	pubkey_check(
+		// *signer.key,
+		*_tmp_storage_pda.key,
+		solana_program::pubkey::Pubkey::new(&merkle_tree_pda_data.pubkey_locked),
+		String::from("Merkle tree locked by another account."),
+	)?;
+```
+
+```rust
+	merkle_tree_pda_data.time_locked = <Clock as Sysvar>::get()?.slot;
+	// merkle_tree_pda_data.pubkey_locked = signer.key.to_bytes().to_vec();
+	merkle_tree_pda_data.pubkey_locked = _tmp_storage_pda.key.to_bytes().to_vec();
+	msg!("Locked at slot: {}", merkle_tree_pda_data.time_locked);
+```
+
+Modify the corresponding argument of `pubkey_check()` as well. This solves the concurrency issue.
+
+```rust
+	assert_eq!(
+		Pubkey::new(&merkle_tree_pda_account_data.pubkey_locked[..]),
+		// signer_keypair.pubkey()
+		*tmp_storage_pda_pubkey
+	);
+```
+
+Also, remove the assignment in lines 65–66 of src/poseidon_merkle_tree/instructions.rs from the function `insert_1_inner_loop()` to the function `insert_last_double()`. This ensures atomicity of state change.
+
+**References**
+
+1. [HashCloak Audit Report](https://github.com/Lightprotocol/light-protocol-v1/blob/main/Audit/Light%20Protocol%20Audit%20Report.pdf)
+2. [Github Fix](https://github.com/Lightprotocol/light-protocol-v1/tree/main)
+3. [Fix Commit1](https://github.com/Lightprotocol/light-protocol/commit/870c07ce9223b696a6dee7dc8b93175d5d8d4260)
+4. [Fix Commit2](https://github.com/Lightprotocol/light-protocol-onchain/commit/b85065422456f743f492d2560b6429396a9eee19)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
