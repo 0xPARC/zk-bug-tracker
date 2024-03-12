@@ -36,7 +36,9 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  21. [Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT](#hexens-polygonzkevm-1)
  22. [Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance](#hexens-polygonzkevm-2)
  23. [Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak](#hexens-polygonzkevm-3)
- 24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#Zendoo-polynomial)
+ 24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#zendoo-polynomial-1)
+ 25. [Aleo: Non-Committing Encryption Used in InputID::Private](#aleo-encryption-1)
+ 26. [Light Protocol: Modification of shared state is not an atomic operation](#light-protocol-1)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
 
@@ -1357,7 +1359,7 @@ isNeg * (1-isNeg) = 0
 1. [Hexens Audit Report](https://github.com/Hexens/Smart-Contract-Review-Public-Reports/blob/main/Hexens_Polygon_zkEVM_PUBLIC_27.02.23.pdf)
 2. [Fix Commit](https://github.com/0xPolygonHermez/zkevm-rom/commit/2ddeffbed7c022e04032e6d56ed6c6fb14cc38dc#diff-353b5f6c54dee2e069c391d2e2e6e3f503853e1d20126225f13a4d2d70a0d445)
 
-## <a name="Zendoo-polynomial">24. Zendoo: Missing Polynomial Normalization after Arithmetic Operations</a>
+## <a name="zendoo-polynomial-1">24. Zendoo: Missing Polynomial Normalization after Arithmetic Operations</a>
 
 **Summary**
 
@@ -1437,6 +1439,152 @@ Zendoo Developers introduced a function named `truncate_leading_zeros()` which r
 
 1. [NCC Group Audit Report](https://research.nccgroup.com/2021/11/30/public-report-zendoo-proof-verifier-cryptography-review/)
 2. [Fix Commit](https://github.com/HorizenOfficial/ginger-lib/pull/112/commits/8e377aa3ba7e383681a5a3421b7bce67c201f8f7)
+
+## <a name="aleo-encryption-1">25. Aleo: Non-Committing Encryption Used in InputID::Private</a>
+
+**Summary**
+
+Related Vulnerabilities: Data Validation
+
+Identified By: [zkSecurity](https://www.zksecurity.xyz/)
+
+`input_hash` is not a binding commitment to `input`, which leads to an attacker being able to construct hash collisions via the transaction view key and input.
+
+**Background**
+
+Aleo employs to "transfer across" inputs from a caller's circuit to a callee's circuit. This transfer mechanism, crucial for the interaction between different circuits, is implemented using the commit-and-prove technique. Specifically, the technique involves:
+
+1. Both the caller and callee commit to their arguments and expose these commitments as public inputs.
+2. The network (verifier) checks both proofs and ensures that the exposed commitments match.
+
+The core of the implementation in snarkVM is: the caller witnesses and exposes `input_ids` of the request as public input, which are also exposed by the callee. The network enforces equality of these `input_ids`.
+
+**The Vulnerability**
+
+The vulnerability specifically arises in the last step when handling InputID::Private type arguments. In the case of InputID::Private, the input_id is derived by:
+
+`InputID::Private`:
+
+```rust
+// A private input is encrypted (using `tvk`) and hashed to a field element.
+InputID::Private(input_hash) => {
+	// Prepare the index as a constant field element.
+	let input_index = Field::constant(console::Field::from_u16(index as u16));
+	// Compute the input view key as `Hash(function ID || tvk || index)`.
+	let input_view_key = A::hash_psd4(&[function_id.clone(), tvk.clone(), input_index]);
+	// Compute the ciphertext.
+	let ciphertext = match &input {
+			Value::Plaintext(plaintext) => plaintext.encrypt_symmetric(input_view_key),
+			// Ensure the input is a plaintext.
+			Value::Record(..) => A::halt("Expected a private plaintext input, found a record
+input"),
+	};
+	// Ensure the expected hash matches the computed hash.
+	input_hash.is_equal(&A::hash_psd8(&ciphertext.to_fields()))
+}
+```
+
+1. Generating `ivk` (input_view_key) from `tvk` (transaction view key).
+2. Encrypting input using input_view_key.
+3. Hashing the resulting ciphertext with the Poseidon hash function.
+4. Constraining the resulting digest to equal input_hash (exposed as a public input).
+
+The crux of the vulnerability is that, for `InputID::Private parameters`, the input_hash does not form a binding commitment to the input. Given that a malicious prover can choose a different `ivk` on the caller side, this means that the input on the caller's side can differ from the input on the callee's side, despite generating the same input_id.
+
+For example, the attacker constructs a different `ivk'` in the caller circuit from the callee, and then provides an input' of his own based on the input in the callee, so that the `input'` can get the same ciphertext as the callee circuit after encrypting it with the `ivk'`. From this, the attacker with a different input in the caller circuit can also get the `input_hash` in the callee circuit.
+
+This manipulation allows a malicious prover to ensure that both the caller and callee circuits produce the same input_id for different inputs, thereby breaking the binding between arguments/inputs across call boundaries in snarkVM.
+
+**The Fix**
+
+To mitigate this vulnerability, it is recommended to use committing encryption: the ciphertext must form a binding commitment to the plaintext. This can be achieved by enforcing `tcm = hash(tvk)` and exposing `tcm` (the transaction commitment) as a public input on the caller's side because `(commit(key) enc(key, pt))` is naturally binding.
+
+**References**
+
+1. [zkSecurity Audit Report](https://www.zksecurity.xyz/blog/2023-aleo-synthesizer.pdf)
+2. [Fix Commit](https://github.com/AleoHQ/snarkVM/pull/2063)
+
+## <a name="light-protocol-1">26. Light Protocol: Modification of shared state is not an atomic operation</a>
+
+**Summary**
+
+Identified By: [HashCloak Inc](https://hashcloak.com/)
+
+Operations on shared state within merkle tree do not possess atomicity. This lack of atomicity, especially in a concurrent execution environment, can lead to inconsistencies or security vulnerabilities as multiple operations may attempt to modify the same state simultaneously.
+
+**Background**
+
+Light Protocol is a privacy protocol on the Solana blockchain that enables users to transfer tokens anonymously. It's built with Groth16 zk-SNARK verifier and Poseidon Merkle tree to ensure the correctness and privacy of token transfers. Users manage encrypted UTXOs on-chain for privacy. The protocol addresses the challenge of executing complex cryptographic computations within Solana's resource-constrained environment by breaking down the execution logic into smaller instructions and safeguarding against potential attacks.
+
+**The Vulnerability**
+
+There are two types of accounts associated with merkle tree operations:
+
+1. LightProtocol designs user accounts for users to store encrypted UTXOs onchain,giving them an overview of their private holdings.
+2. tmp_account created by signer.
+
+In LightProtocol, locks are implemented by binding them to the public key of the originator signer. The problem is that in the current implementation, it is possible to execute the Merkle tree command with different temporary storage accounts at the same time, as long as they are initiated by the same signer.
+
+```rust
+	pubkey_check(
+		*signer.key,
+		solana_program::pubkey::Pubkey::new(&merkle_tree_pda_data.pubkey_locked),
+		String::from("Merkle tree locked by another account."),
+	)?;
+```
+
+```rust
+	merkle_tree_pda_data.time_locked = <Clock as Sysvar>::get()?.slot;
+	merkle_tree_pda_data.pubkey_locked = signer.key.to_bytes().to_vec();
+	msg!("Locked at slot: {}", merkle_tree_pda_data.time_locked);
+```
+
+It only prevents different signers from modifying the state of the Merkle tree at the same time, but it does not prevent the same signer from using different temporary storage accounts (`_tmp_storage_pda` in the code from commits `870c07...8d4260` and `b85065 ...9eee19`) for concurrent operations. Therefore an attacker can utilize different temporary storage accounts with the same initiator identity to perform Merkle tree update operations simultaneously. This means that in a concurrent environment, the state of the Merkle tree (e.g., the `filled_subtrees[]` array) may be updated without completing all the necessary validation steps, resulting in data consistency and integrity not being guaranteed.
+
+Attack method: an interrupt is inserted at some point during the Merkle tree update process, causing some instructions to be executed while the rest of the instructions are reserved to continue in subsequent operations. The attacker does this by concurrently executing two transactions (each missing the last instruction). Since the lock is only on the initiator's public key and not the temporary storage account, the second transaction can start executing without the first one being completed. This causes the `filled_subtrees[]` field to be updated with the results of the second transaction, not the first.
+
+The attacker sends the last instruction of the first transaction after the data from the second transaction has been merged into the Merkle tree state. Due to the previous concurrent execution, the `filled_subtrees[]` field already contains the data from the second transaction, but the system records that the first transaction was paid. Ultimately, an attacker can effectively merge the data of the second transaction into the Merkle tree without paying for it and exploit the UTXO of this transaction.
+
+**The Fix**
+
+The correct approach should be to bind the lock to the temporary storage account used during execution, ensuring that no concurrent modifications to the Merkle tree state can be made at the same time, even by the same initiator of the operation.
+
+In `src/poseidon_merkle_tree/processor.rs`, assign to the field `pubkey_locked` the key of `_tmp_storage_pda` instead of the key of signer.
+
+```rust
+	pubkey_check(
+		// *signer.key,
+		*_tmp_storage_pda.key,
+		solana_program::pubkey::Pubkey::new(&merkle_tree_pda_data.pubkey_locked),
+		String::from("Merkle tree locked by another account."),
+	)?;
+```
+
+```rust
+	merkle_tree_pda_data.time_locked = <Clock as Sysvar>::get()?.slot;
+	// merkle_tree_pda_data.pubkey_locked = signer.key.to_bytes().to_vec();
+	merkle_tree_pda_data.pubkey_locked = _tmp_storage_pda.key.to_bytes().to_vec();
+	msg!("Locked at slot: {}", merkle_tree_pda_data.time_locked);
+```
+
+Modify the corresponding argument of `pubkey_check()` as well. This solves the concurrency issue.
+
+```rust
+	assert_eq!(
+		Pubkey::new(&merkle_tree_pda_account_data.pubkey_locked[..]),
+		// signer_keypair.pubkey()
+		*tmp_storage_pda_pubkey
+	);
+```
+
+Also, remove the assignment in lines 65–66 of src/poseidon_merkle_tree/instructions.rs from the function `insert_1_inner_loop()` to the function `insert_last_double()`. This ensures atomicity of state change.
+
+**References**
+
+1. [HashCloak Audit Report](https://github.com/Lightprotocol/light-protocol-v1/blob/main/Audit/Light%20Protocol%20Audit%20Report.pdf)
+2. [Github Fix](https://github.com/Lightprotocol/light-protocol-v1/tree/main)
+3. [Fix Commit1](https://github.com/Lightprotocol/light-protocol/commit/870c07ce9223b696a6dee7dc8b93175d5d8d4260)
+4. [Fix Commit2](https://github.com/Lightprotocol/light-protocol-onchain/commit/b85065422456f743f492d2560b6429396a9eee19)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
