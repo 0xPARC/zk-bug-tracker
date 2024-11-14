@@ -307,7 +307,7 @@ Semaphore is a dapp built on Ethereum that allows users to prove their membershi
 
 **The** **Vulnerability**
 
-Since the Solidity *uint256* type can hold numbers larger than the snark scalar field order, it is important to be weary of overflows. In order to prevent unwanted overflows, the Semaphore verifier smart contract automatically fails if a public input is greater than the snark scalar field order:
+Since the Solidity *uint256* type can hold numbers larger than the snark scalar field order, it is important to be wary of overflows. In order to prevent unwanted overflows, the Semaphore verifier smart contract automatically fails if a public input is greater than the snark scalar field order:
 
 ```jsx
 // From Semaphore/contracts/base/Verifier.sol (outdated)
@@ -327,7 +327,7 @@ function _createGroup(
     uint8 depth,
     uint256 zeroValue
   ) internal virtual {
-		// The Fix is the following require statement:
+		// The Fix is the following required statement:
     require(groupId < SNARK_SCALAR_FIELD, "SemaphoreGroups: group id must be < SNARK_SCALAR_FIELD");
     require(getDepth(groupId) == 0, "SemaphoreGroups: group already exists");
 
@@ -439,7 +439,7 @@ The Aztec Plonk verifier, written in C++, accepts proofs containing multiple ele
 
 The full description of this bug is quite math heavy and dives deep into the Plonk protocol. The finder of this bug, Nguyen Thoi Minh Quan, has a great detailed description of the bug [here](https://github.com/cryptosubtlety/00/blob/main/00.pdf).
 
-Elliptic curves have what is known as a point at infinity. Let `O = point at infinity` and `P` be any point on the curve. Then `O + P = P`. When implementing a cryptographic protocol in code, there are different ways to express the point at inifinity. For example, sometimes the number `0` is considered the point at infinity, but other times `0` is considered as the point `(0, 0)`, which is not the point at infinity. This will be important later.
+Elliptic curves have what is known as a point at infinity. Let `O = point at infinity` and `P` be any point on the curve. Then `O + P = P`. When implementing a cryptographic protocol in code, there are different ways to express the point at infinity. For example, sometimes the number `0` is considered the point at infinity, but other times `0` is considered as the point `(0, 0)`, which is not the point at infinity. This will be important later.
 
 Plonk proofs require a group of elements and curve points, and then will check whether these elements and points satisfy certain equations. One of the main equations to check is an elliptic curve pairing. The curve points that are of importance for this bug are [W<sub>z</sub>]<sub>1</sub> and [W<sub>zw</sub>]<sub>1</sub>.
 
