@@ -31,7 +31,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  16. [PSE & Scroll zkEVM: Missing Constraint](#pse-zkevm-2)
  17. [Dusk Network: Missing Blinding Factors](#dusk-1)
  18. [EY Nightfall: Missing Nullifier Range Check](#nightfall-1)
- 19. [Summa: Unconstrained Constants Assignemnt](#summa-1)
+ 19. [Summa: Unconstrained Constants Assignment](#summa-1)
  20. [Polygon zkEVM: Missing Remainder Constraint](#polygon-zkevm-1)
  21. [Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT](#hexens-polygonzkevm-1)
  22. [Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance](#hexens-polygonzkevm-2)
@@ -795,7 +795,7 @@ The PSE & Scroll zkEVM SHL/SHR opcode circuit was missing a constraint, which wo
 
 **Background**
 
-The SHL/SHR opcode (bit shift left and bit shift right) takes in two inputs from the stack: `x` and `shift`. For SHL it should output `x << shift` and for SHR it should output `x >> shift`. Since `x` and `shift` are on the stack, they each can be any 256 bit value. The calculation of a shift operation involves calculating `2^shift`. Since `shift` can be a very large number, this calculation in a circuit could become very expensive. A to avoid this is recognizing that whenever `shift > 255`, the output to the stack should be `0` both for SHL or SHR. Then make the circuit compute `2^shift` only when `shift <= 255`. This is what the zkEVM SHL/SHR opcode circuit does. Also note that this circuit is shared between both opcodes.
+The SHL/SHR opcode (bit shift left and bit shift right) takes in two inputs from the stack: `x` and `shift`. For SHL it should output `x << shift` and for SHR it should output `x >> shift`. Since `x` and `shift` are on the stack, they each can be any 256 bit value. The calculation of a shift operation involves calculating `2^shift`. Since `shift` can be a very large number, this calculation in a circuit could become very expensive. A way to avoid this is recognizing that whenever `shift > 255`, the output to the stack should be `0` both for SHL or SHR. Then make the circuit compute `2^shift` only when `shift <= 255`. This is what the zkEVM SHL/SHR opcode circuit does. Also note that this circuit is shared between both opcodes.
 
 **The Vulnerability**
 
@@ -837,7 +837,7 @@ The Dusk Network is a privacy-oriented blockchain that relies on zk proofs. In o
 
 ZK SNARKs are useful for both their succinctness and their zero knowledge. The main pieces of the Plonk protocol allows the proofs to be succinct, and it only takes a few small steps to make the protocol zero knowledge as well. Making the protocol zero knowledge means that an attacker cannot look at a proof and then derive the witness used to generate that proof.
 
-In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verficiation successful. These secret shifts prevent others from extracting the witness from the proof.
+In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verification successful. These secret shifts prevent others from extracting the witness from the proof.
 
 **The Vulnerability**
 
@@ -892,7 +892,7 @@ require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
 2. [Github Fix](https://github.com/EYBlockchain/nightfall/pull/96)
 
 
-## <a name="summa-1">19. Summa: Unconstrained Constants Assignemnt </a>
+## <a name="summa-1">19. Summa: Unconstrained Constants Assignment </a>
 
 **Summary**
 
@@ -935,7 +935,7 @@ Later on the circuit would have an assignment function to be called during witne
     )?;
 ```
 
-However, this design erroneusly suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
+However, this design erroneously assumes that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
 
 **The Fix**
 
@@ -1054,7 +1054,7 @@ The inclusion check algorithm consists of two parts (reference link: https://wik
     };
 ```
 
-Hence, the part (1) is used to prove that the Value exists in the SMT, and the part (2) is used to prove that the Value is actually binded with the correct Key.
+Hence, the part (1) is used to prove that the Value exists in the SMT, and the part (2) is used to prove that the Value is actually bound with the correct Key.
 
 **The Vulnerability**
 
@@ -1128,7 +1128,7 @@ hash3 = ***1
 ```
 
 As only 1 bit of every POSEIDON hash register is fixed, it is a trivial task to overcome the 4-bit entropy and find a storage slot (for any given account address) to meet the attack prerequisites.
-Another limitation is that the leaf we are inserting must have a level greater than 4, in the real-world scenario this is guaranteed to be the case (with a negligible negative outcome probability) as there will be millions of leafs inserted into the tree. Even if it's not the case the attacker will only need to precompute two storage slots and insert them both to guarantee the minimal level.
+Another limitation is that the leaf we are inserting must have a level greater than 4, in the real-world scenario this is guaranteed to be the case (with a negligible negative outcome probability) as there will be millions of leaves inserted into the tree. Even if it's not the case the attacker will only need to precompute two storage slots and insert them both to guarantee the minimal level.
 
 After inserting `(KeyPrecomputed, ValueArbitrary)` into the SMT using the opSSTORE procedure, and thus fulfilling the prerequisites the attacker can fake the binding of any key `KeyToFake` with the value ValueArbitrary, by setting the last 4 next-bit values from the free input to:
 
@@ -1614,7 +1614,7 @@ Under-constrained circuits attacks can vary widely depending on the constraints 
 
 Nondeterministic circuits are a subset of under-constrained circuits, usually because the missing constraints make the circuit nondeterministic. Nondeterminism, in this case, means that there are multiple ways to create a valid proof for a certain outcome. A common example of this is a nondeterministic nullifier generation process.
 
-Nullifiers are often used in with zk applications to prevent double actions. For example, TornadoCash requires a nullifier to be generated and posted on-chain when a note commitment is spent. That way, if the user tries to spend the same note commitment a second time, they will have to post the same nullifier on-chain. Since the nullifier already exists, the smart contract will revert this second spend. The smart contract relies on a valid zk proof to ensure that the nullifier was generated correctly.
+Nullifiers are often used in zk applications to prevent double actions. For example, TornadoCash requires a nullifier to be generated and posted on-chain when a note commitment is spent. That way, if the user tries to spend the same note commitment a second time, they will have to post the same nullifier on-chain. Since the nullifier already exists, the smart contract will revert this second spend. The smart contract relies on a valid zk proof to ensure that the nullifier was generated correctly.
 
 Note: Not all nondeterminstic circuits are vulnerable to attacks. In some cases, nondeterminism can allow for an optimized circuit while remaining secure. For example, the [circom-pairing library](https://github.com/yi-sun/circom-pairing/blob/master/docs/README.md#fp-element) represents field elements as integers A such that `0 <= A < p`, but only constrains `0 <= A`. So the `A < p` constraint is left out except for circuits that require it. In the cases where that constraint is not required, overflows will not break the assumptions of the circuit. However, it is still important to be aware of this possibility.
 
@@ -1624,7 +1624,7 @@ In a nondeterministic circuit for proving correct nullifier generation, there ar
 
 **Preventative Techniques**
 
-In order to prevent nondeterministic circuits, in-depth manual review of the circuit logic is needed. Constraints need to be added to ensure that the logic is deterministic where necessary. Often times, nondeterministic vulnerabilities can be fixed by adding additional constraints to make the logic deterministic.
+In order to prevent nondeterministic circuits, in-depth manual review of the circuit logic is needed. Often times, nondeterministic vulnerabilities can be fixed by adding additional constraints to make the logic deterministic.
 
 ## <a name="arithmetic-over-under-flows">3. Arithmetic Over/Under Flows</a>
 
