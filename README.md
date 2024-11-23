@@ -31,7 +31,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  16. [PSE & Scroll zkEVM: Missing Constraint](#pse-zkevm-2)
  17. [Dusk Network: Missing Blinding Factors](#dusk-1)
  18. [EY Nightfall: Missing Nullifier Range Check](#nightfall-1)
- 19. [Summa: Unconstrained Constants Assignemnt](#summa-1)
+ 19. [Summa: Unconstrained Constants Assignment](#summa-1)
  20. [Polygon zkEVM: Missing Remainder Constraint](#polygon-zkevm-1)
  21. [Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT](#hexens-polygonzkevm-1)
  22. [Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance](#hexens-polygonzkevm-2)
@@ -892,7 +892,7 @@ require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
 2. [Github Fix](https://github.com/EYBlockchain/nightfall/pull/96)
 
 
-## <a name="summa-1">19. Summa: Unconstrained Constants Assignemnt </a>
+## <a name="summa-1">19. Summa: Unconstrained Constants Assignment </a>
 
 **Summary**
 
