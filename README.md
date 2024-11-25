@@ -35,7 +35,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  20. [Polygon zkEVM: Missing Remainder Constraint](#polygon-zkevm-1)
  21. [Polygon zkEVM: Missing constraint in PIL leading to proving fake inclusion in the SMT](#hexens-polygonzkevm-1)
  22. [Polygon zkEVM: Incorrect CTX assignation leading to addition of random amount of ether to the sequencer balance](#hexens-polygonzkevm-2)
- 23. [Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak](#hexens-polygonzkevm-3)
+ 23. [Polygon zkEVM: Missing constraint in PIL leading to execution flow hijack](#hexens-polygonzkevm-3)
  24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#zendoo-polynomial-1)
  25. [Aleo: Non-Committing Encryption Used in InputID::Private](#aleo-encryption-1)
  26. [Light Protocol: Modification of shared state is not an atomic operation](#light-protocol-1)
@@ -1240,7 +1240,7 @@ The Fix of this issue is to change the `identity.zkasm` code to save the `origin
 1. [Hexens Audit Report](https://github.com/Hexens/Smart-Contract-Review-Public-Reports/blob/main/Hexens_Polygon_zkEVM_PUBLIC_27.02.23.pdf)
 2. [Fix Commit](https://github.com/0xPolygonHermez/zkevm-rom/commit/2ddeffbed7c022e04032e6d56ed6c6fb14cc38dc#diff-388aa2d51760e0d46ac2b556f46a39e7e893b223b4c3604fa804e29557078ffa)
 
-## <a name="hexens-polygonzkevm-3">23. Polygon zkEVM: Missing constraint in PIL leading to execution flow hijak</a>
+## <a name="hexens-polygonzkevm-3">23. Polygon zkEVM: Missing constraint in PIL leading to execution flow hijack</a>
 
 **Summary**
 
