@@ -464,7 +464,7 @@ This bug is a good example of how implementing a secure cryptographic protocol c
 
 Related Vulnerabilities: 1. Under-constrained Circuits, 2. Nondeterministic Circuits
 
-Identified By: [botdad](https://twitter.com/0xB07DAD)
+Identified By: [botdad](https://github.com/botdad)
 
 StealthDrop requires users post a nullifier on-chain when they claim an airdrop. If they try to claim the airdrop twice, the second claim will fail. However, ECDSA signatures were used as the nullifier and these signatures are nondeterministic. Therefore different signatures were valid nullifiers for a single claim and users could claim an airdrop multiple times by sending the different valid signatures.
 
@@ -1031,7 +1031,7 @@ In order to prove the (Key, Value) inclusion in the SMT, the state machine repre
 
 As the tree is sparse, the leaf level is not necessarily equal to the key bits length, that means that as soon as the leaf is inserted into the tree, the remaining part of the key (rkey) is being encoded into the leaf value.
 
-The inclusion check algorithm consists of two parts (reference link: https://wiki.polygon.technology/docs/zkEVM/zkProver/basic-smt-ops):
+The inclusion check algorithm consists of two parts (reference link: https://docs.polygon.technology/zkEVM/concepts/sparse-merkle-trees/basic-smt-ops):
 
 1. Checking The Root - is done as a generic Merkel Tree root check by climbing from the leaf to the root using sibling hashes.
 
@@ -1073,7 +1073,7 @@ Nonetheless, it can not be abused straightforwardly; a number of limitations mus
 Limitations overview:
 
 In the Storage SM, The key is broken down into four registers: rkey0,..,rkey3 and the path is constructed by cycling the consecutive bits of that registers:
-`path = [rKey0_0, rKey1_0, rKey2_0, rKey3_0, rKey0_1, ... ]` (reference link: https://wiki.polygon.technology/docs/zkEVM/zkProver/construct-key-path)
+`path = [rKey0_0, rKey1_0, rKey2_0, rKey3_0, rKey0_1, ... ]` (reference link: https://docs.polygon.technology/zkEVM/architecture/zkprover/storage-state-machine/construct-key-path/)
 
 Thus, in order to reconstruct the key from the bits, the corresponding rkey polynomial needs to be prepended with that bit:
 
