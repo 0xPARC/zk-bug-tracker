@@ -39,6 +39,7 @@ If you would like to add a "bug in the wild" or a "common vulnerability", there 
  24. [Zendoo: Missing Polynomial Normalization after Arithmetic Operations](#zendoo-polynomial-1)
  25. [Aleo: Non-Committing Encryption Used in InputID::Private](#aleo-encryption-1)
  26. [Light Protocol: Modification of shared state is not an atomic operation](#light-protocol-1)
+ 27. [ZK Email: under-constrained circuit leads to email address spoofing](#zkemail-1)
 
 #### [Common Vulnerabilities](#common-vulnerabilities-header)
 
@@ -1585,6 +1586,182 @@ Also, remove the assignment in lines 65–66 of src/poseidon_merkle_tree/instruc
 2. [Github Fix](https://github.com/Lightprotocol/light-protocol-v1/tree/main)
 3. [Fix Commit1](https://github.com/Lightprotocol/light-protocol/commit/870c07ce9223b696a6dee7dc8b93175d5d8d4260)
 4. [Fix Commit2](https://github.com/Lightprotocol/light-protocol-onchain/commit/b85065422456f743f492d2560b6429396a9eee19)
+
+## <a name="zkemail-1">27. ZK Email: under-constrained circuit leads to email address spoofing</a>
+
+**Summary**
+
+Related Vulnerabilities: Under-constrained Circuits
+
+Identified By: [Matter Labs Audits](https://github.com/matter-labs-audits)
+
+**Background**
+
+The ZK Email technology allows to initiate on-chain transactions via emails. It achieves this by relying on DKIM signatures and zero-knowledge proofs. On the whole, the ZK Email system comprises five main components: 
+
+- The **ZK regex compiler** generates a Cicrom circuit from a regular expression.
+- **Circom circuits** are used to verify the email’s DKIM signature, process the email’s data, and extract public information while keeping the email content confidential to protect any private data it may contain.
+- The **DKIM oracle** is responsible for fetching DKIM public keys for email providers and producing signed data to be submitted to the DKIM registry smart contract.
+- **Solidity smart contracts** process ZK proofs alongside the email’s public data. The DKIM registry smart contract among them incorporates public key hashes for whitelisted email providers.
+- The **Relayer** is responsible for coordinating off-chain components by receiving emails, producing ZK-proofs, and posting them on-chain. The protocol allows for the relayer to be self-hosted which has stronger privacy guarantees.
+
+**The Vulnerability**
+
+The cornerstone part of the ZK Email system is the ZK regex compiler. It empowers a ZK circuit to support the processing of input signals with beloved and cherished regular expressions. The ZK regexes allow not only to constrain the input to satisfy the regex but additionally to produce a revealing array, exposing the part of the input matching specific sub-regexes.
+
+Let’s look at the concrete example of a regex fed to the ZK regex compiler. This one comprises several sub-regexes and should match the whole `dkim-signature` header in an email but reveal only the timestamp value for the `;t=ts_value` tag in the header.
+
+```json
+{
+  "parts": [
+    {
+      "is_public": false,
+      "regex_def": "(\r\n|^)dkim-signature:"
+    },
+    {
+      "is_public": false,
+      "regex_def": "([a-z]+=[^;]+; )+t="
+    },
+    {
+      "is_public": true,
+      "regex_def": "[0-9]+"
+    },
+    {
+      "is_public": false,
+      "regex_def": ";"
+    }
+  ]
+}
+```
+
+The ZK Email relies on regular expressions prefixed with `(\r\n|^)header_name:` for extracting various headers from an email, such as the `from`, `subject`, `dkim-signature` headers.
+
+When we compile a regular expression with the compiler, it generates a Circom circuit that embodies a Deterministic Finite Automaton (DFA) satisfying the regular expression. Any regular expression can be converted into an equivalent DFA. An input string matches the regular expression if it transitions the DFA to the accept state.
+
+Let’s have the `^a` regular expression as a toy example. When generating a circuit for [the regular expression](https://zkregex.com/min_dfa?regex=XmE=), the compiler makes a DFA with three states, with state `2` being the accepted state.
+
+What’s more essential for understanding the vulnerability identified is that the compiler injects `255` decimal as the first value to the `in` array before the user’s input. This one is called an “invalid” decimal, as conceived by the ZK regex compiler’s code, and shouldn’t interfere with the user’s input, indicating the beginning of the string.
+
+```circom
+var num_bytes = msg_bytes+1;
+signal in[num_bytes];
+// -->
+in[0]<==255;
+// <--
+for (var i = 0; i < msg_bytes; i++) {
+	in[i+1] <== msg[i];
+}
+```
+
+Further, in the main loop, the circuit handles the transition between states of the DFA based on the input `in[i]` and the current state. Initially, the DFA is in state `0` and transitions to state `1` when it receives the 255-decimal input, which denotes the beginning of the string or `^`.
+
+```circom
+for (var i = 0; i < num_bytes; i++) {
+	state_changed[i] = MultiOR(2);
+	eq[0][i] = IsEqual();
+	// -->
+	eq[0][i].in[0] <== in[i];
+	eq[0][i].in[1] <== 255;
+	// <--
+	and[0][i] = AND();
+	and[0][i].a <== states[i][0];
+	and[0][i].b <== eq[0][i].out;
+        // -->
+	states[i+1][1] <== and[0][i].out;
+        // <--
+	state_changed[i].in[0] <== states[i+1][1];
+	eq[1][i] = IsEqual();
+	eq[1][i].in[0] <== in[i];
+	eq[1][i].in[1] <== 97;
+	and[1][i] = AND();
+	and[1][i].a <== states[i][1];
+	and[1][i].b <== eq[1][i].out;
+	states[i+1][2] <== and[1][i].out;
+	state_changed[i].in[1] <== states[i+1][2];
+	states[i+1][0] <== 1 - state_changed[i].out;
+}
+```
+
+If the subsequent input (the 1st character in the user’s input) isn’t a 97-decimal value (`a` character), it transitions back to state `0` from state `1`.
+
+```circom
+for (var i = 0; i < num_bytes; i++) {
+	state_changed[i] = MultiOR(2);
+	eq[0][i] = IsEqual();
+	eq[0][i].in[0] <== in[i];
+	eq[0][i].in[1] <== 255;
+	and[0][i] = AND();
+	and[0][i].a <== states[i][0];
+	and[0][i].b <== eq[0][i].out;
+	states[i+1][1] <== and[0][i].out;
+	state_changed[i].in[0] <== states[i+1][1];
+	eq[1][i] = IsEqual();
+	// -->
+	eq[1][i].in[0] <== in[i];
+	eq[1][i].in[1] <== 97;
+	// <--
+	and[1][i] = AND();
+	and[1][i].a <== states[i][1];
+	and[1][i].b <== eq[1][i].out;
+	states[i+1][2] <== and[1][i].out;
+	state_changed[i].in[1] <== states[i+1][2];
+	// -->
+	states[i+1][0] <== 1 - state_changed[i].out;
+ 	// <--
+}
+```
+
+Otherwise, having `a` character as an input, it transitions from state `1` to state `2`, acting as the accepted state.
+
+This implies that one can bypass the regexp by feeding `[x, y, z, \xff, a]` as an input array. Initially, the DFA transitions from state `0` to state `1`  while processing the start of the string. Later, as the `x`, `y`, and `z` input characters are processed, the DFA remains in state `0` since the `x` character transitioned the DFA back to state `0` from state `1`. However, when it receives `\xff` character as the 4th character, the DFA transitions to state `1`, and the subsequent `a` character input entails the DFA’s transition to the accepted state.
+
+For a further deep dive into the ZK regex compiler, we highly recommend the [ZK Regexp technical explainer](https://prove.email/blog/zkregex). Inquisitive readers can visit online [ZK Regex Tools](https://zkregex.com/) to build DFAs and state matrices or obtain Circom circuits for regexes of their choice.
+
+Now, coming back to the vulnerability. We’ve discovered that most email providers blissfully send invalid UTF-8 characters in the subject header of an email, including the `\xff` character.
+
+```email
+subject: \xfffrom: victim@anydomain
+```
+
+With the following `curl` command line, we’ve managed to send a DKIM-signed email with the `\xff` character in the subject header through Gmail.
+
+```shell
+curl -vvv --ssl-reqd \
+  --url 'smtp://smtp.gmail.com:587' \
+  --user 'attacker@gmail.com:{password}' \
+  --mail-from 'attacker@gmail.com' \
+  --mail-rcpt 'relayer@domain'\
+  --upload-file mail-255.txt
+```
+
+The `EmailAuth` circuit is in charge of verifying DKIM-signature of the email and extracting the sender’s email address by parsing the `from` header using the sub-circuits `FromAddrRegex`, `FromAllRegex`, and `EmailAddrRegex`. The `FromAllRegex` circuit matches the `from` header in the email by using the following regular expression:
+
+```regexp
+(\r\n|^)from:[^\r\n]+\r\n
+```
+
+Given that the attacker can inject `\xff` character followed by the victim’s email address, the `EmailAuth` circuit can be tricked into extracting `victim@anydomain` email address from the `subject` header, thinking it comes from the `from` header.
+
+This ultimately results in an email spoofing attack, allowing the attacker to impersonate any email address by sending emails from `attacker@gmail.com` with the victim’s email address injected after the `\xff` character in the subject.
+
+**The Fix**
+
+The ZK Email team mitigated the vulnerability by introducing a range check for the user’s input in this [commit](https://github.com/zkemail/zk-regex/commit/77541563c36075a0a5e817656d4613b5fb7ff548). Currently, all Circom circuits generated by the ZK regex compiler include the following constraints in the initialization part:
+
+```circom
+signal in_range_checks[msg_bytes];
+in[0]<==255;
+for (var i = 0; i < msg_bytes; i++) {
+	in_range_checks[i] <== LessThan(8)([msg[i], 255]);
+	in_range_checks[i] === 1;
+	in[i+1] <== msg[i];
+}
+```
+
+**References**
+
+1. [ZK Email: Unveiling Classic Attacks and Why Zero-Knowledge Proofs Alone Are Not a Panacea](https://github.com/matter-labs-audits/reports/blob/main/research/zkemail/README.md)
+1. [ZKEmail Security Review Report](https://github.com/matter-labs-audits/reports/blob/main/reports/zkemail/ZKEmail%20Security%20Review%20Report.pdf)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
