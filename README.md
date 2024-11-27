@@ -1761,7 +1761,7 @@ for (var i = 0; i < msg_bytes; i++) {
 **References**
 
 1. [ZK Email: Unveiling Classic Attacks and Why Zero-Knowledge Proofs Alone Are Not a Panacea](https://github.com/matter-labs-audits/reports/blob/main/research/zkemail/README.md)
-1. [ZKEmail Security Review Report](https://github.com/matter-labs-audits/reports/blob/main/reports/zkemail/ZKEmail%20Security%20Review%20Report.pdf)
+1. [ZK Email Security Review Report](https://github.com/matter-labs-audits/reports/blob/main/reports/zkemail/ZKEmail%20Security%20Review%20Report.pdf)
 
 # <a name="common-vulnerabilities-header">Common Vulnerabilities</a>
 
