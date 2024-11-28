@@ -1220,7 +1220,7 @@ As the txGasLimit references the oldStateRoot, which is the hash of the state tr
 The attack requirements and probability:
 For any user to be able to credit himself an almost infinite ether balance, he needs to be the one sequencing it. The most convenient way to do so is to force a batch in L1 PolygonZkEVM contract.
 As in the current configuration, the trusted sequencer ignores the forced batches; it stores them in separate state.forced_batch table in the DB:
-https://github.com/0xPolygonHermez/zkevm-node/blob/develop/state/pgstatestorage.go#L316-L320 
+https://github.com/0xPolygonHermez/zkevm-node/blob/develop/state/pgstatestorage/pgstatestorage.go#L316-L320 
 
 And when the sequencer will query for the pending batches to be sequenced in the getSequencesToSend() function:
 
