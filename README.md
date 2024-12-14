@@ -892,7 +892,7 @@ require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
 2. [Github Fix](https://github.com/EYBlockchain/nightfall/pull/96)
 
 
-## <a name="summa-1">19. Summa: Unconstrained Constants Assignemnt </a>
+## <a name="summa-1">19. Summa: Unconstrained Constants Assignment </a>
 
 **Summary**
 
@@ -935,7 +935,7 @@ Later on the circuit would have an assignment function to be called during witne
     )?;
 ```
 
-However, this design erroneusly suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
+However, this design erroneously suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
 
 **The Fix**
 
@@ -1229,7 +1229,7 @@ https://github.com/0xPolygonHermez/zkevm-node/blob/develop/sequencer/sequencesen
 It will only query for the batches from state.batch table:
 https://github.com/0xPolygonHermez/zkevm-node/blob/develop/state/pgstatestorage.go#L535-L539 
 
-Thus the attacker will need to force a batch and then to wait for the timeout period to pass and sequence it, setting the sequencer to arbitrary address. In the current configuration the attack gives opportunity to anyone to force such batch and after the timeout period to be credited with unlimited ether balance, if combined with obfuscating the transaction with other "dummy" transactions and adding a bridgeAsset() call somewhere after in the same batch, the attacker will gain a deposit leaf of arbitrary ether amount as soon as the batch is verified and can claim all of the ether held by the bridge.
+Thus the attacker will need to force a batch and then to wait for the timeout period to pass and sequence it, setting the sequencer to arbitrary address. In the current configuration the attack gives opportunity to anyone to force such batch and after the timeout period to be credited with unlimited ether balance, if combined with obscuring the transaction with other "dummy" transactions and adding a bridgeAsset() call somewhere after in the same batch, the attacker will gain a deposit leaf of arbitrary ether amount as soon as the batch is verified and can claim all of the ether held by the bridge.
 
 **The Fix**
 
@@ -1320,7 +1320,7 @@ The attack breakdown:
 
 At this point attacker has a primitive to jump to an arbitrary address; the next step will be to find a suitable gadget to jump to, the main requirements for the target are to:
 * Not to corrupt/revert zkEVM execution
-* Impact favourably for the attacker
+* Impact favorably for the attacker
 
 One of the jump chains found is to use one of the *CALL opcodes as the start of the attack chain to call the computeSendGasCall and subsequently craft a jump into the refundGas label's code:
 https://github.com/0xPolygonHermez/zkevm-rom/blob/develop/main/process-tx.zkasm#L496-L498
