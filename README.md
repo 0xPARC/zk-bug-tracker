@@ -837,7 +837,7 @@ The Dusk Network is a privacy-oriented blockchain that relies on zk proofs. In o
 
 ZK SNARKs are useful for both their succinctness and their zero knowledge. The main pieces of the Plonk protocol allows the proofs to be succinct, and it only takes a few small steps to make the protocol zero knowledge as well. Making the protocol zero knowledge means that an attacker cannot look at a proof and then derive the witness used to generate that proof.
 
-In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verficiation successful. These secret shifts prevent others from extracting the witness from the proof.
+In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verification successful. These secret shifts prevent others from extracting the witness from the proof.
 
 **The Vulnerability**
 
