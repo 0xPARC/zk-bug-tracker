@@ -837,7 +837,7 @@ The Dusk Network is a privacy-oriented blockchain that relies on zk proofs. In o
 
 ZK SNARKs are useful for both their succinctness and their zero knowledge. The main pieces of the Plonk protocol allows the proofs to be succinct, and it only takes a few small steps to make the protocol zero knowledge as well. Making the protocol zero knowledge means that an attacker cannot look at a proof and then derive the witness used to generate that proof.
 
-In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verficiation successful. These secret shifts prevent others from extracting the witness from the proof.
+In Plonk one of the few steps that makes the protocol zero knowledge is adding blinding factors to the prover polynomials. Essentially, the prover shifts the polynomials by a secret amount while still keeping the proof verification successful. These secret shifts prevent others from extracting the witness from the proof.
 
 **The Vulnerability**
 
@@ -892,7 +892,7 @@ require(_inputs[4]<zokratesPrime, "Input too large - possible overflow attack");
 2. [Github Fix](https://github.com/EYBlockchain/nightfall/pull/96)
 
 
-## <a name="summa-1">19. Summa: Unconstrained Constants Assignemnt </a>
+## <a name="summa-1">19. Summa: Unconstrained Constants Assignment </a>
 
 **Summary**
 
@@ -935,7 +935,7 @@ Later on the circuit would have an assignment function to be called during witne
     )?;
 ```
 
-However, this design erroneusly suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
+However, this design erroneously suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
 
 **The Fix**
 
