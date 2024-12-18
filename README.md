@@ -935,7 +935,7 @@ Later on the circuit would have an assignment function to be called during witne
     )?;
 ```
 
-However, this design erroneusly suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
+However, this design erroneously suppose that any prover would be using the assignment function provided by the library. A malicious prover can simply take the function and modify it to assign a different `Value::known` to `check`, even 0. This would cause the circuit to generate a valid proof for a `lhs` that is greater than the `rhs`.
 
 **The Fix**
 
